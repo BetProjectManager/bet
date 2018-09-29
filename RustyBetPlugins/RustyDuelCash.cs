@@ -308,14 +308,17 @@ namespace Oxide.Plugins
             public DuelPlayer Initiator { get; set; }
             public DuelPlayer Responser { get; set; }
             public int        Bet       { get; set; }
-            public string     Weapon    { get; set; }
+            public int        Weapon    { get; set; }
+            public int        Ammo      { get; set; }
             public string     Arena     { get; set; }
 
-            public DuelRequest(DuelPlayer init, int bet, string arena = "Случайно")
+            public DuelRequest(DuelPlayer init, int bet, int weapon, int ammo, string arena = "Случайно")
             {
                 Initiator = init;
                 Bet       = bet;
                 Arena     = arena;
+                Weapon    = weapon;
+                Ammo      = ammo;
             }
 
             public void OnResponse(DuelPlayer resp)
@@ -336,8 +339,8 @@ namespace Oxide.Plugins
             public DuelPlayer       BluePlayer    { get; set; }
             public TimerExtension   CurrentTimer  { get; set; }
             public int              Cash          { get; set; }
-            public string           CurrentWeapon { get; set; }
-            public string           CurrentAmmo   { get; set; }
+            public int              CurrentWeapon { get; set; }
+            public int              CurrentAmmo   { get; set; }
 
             private PluginTimers  m_tInstance  { get; set; }
 
@@ -358,7 +361,7 @@ namespace Oxide.Plugins
             {
                 Spawns = new ArenaSpawnPoints(red, blue);
             }
-            public void InitializeWeapon(string weapon, string ammo)
+            public void InitializeWeapon(int weapon, int ammo)
             {
                 CurrentWeapon = weapon;
                 CurrentAmmo   = ammo;
@@ -863,11 +866,7 @@ namespace Oxide.Plugins
         }
         private void PreparePlayerForArena(BasePlayer player)
         {
-            string[] weapon = GetWeaponData(player?.GetActiveItem());
-            if (weapon == null) return;
-
             ClearInventory(player);
-            GiveChoisedWeapon(player, weapon[0], weapon[1]);
         }
         private string GetChoisedWeapon(BasePlayer player)
         {
@@ -953,7 +952,7 @@ namespace Oxide.Plugins
             if (user.Connection.ipaddress == target.Connection.ipaddress) return true;
             else return false;
         }
-        private string[] GetWeaponData(Item active)
+        private int[] GetWeaponData(Item active)
         {
             if(active == null)
             {
@@ -967,8 +966,8 @@ namespace Oxide.Plugins
                 {
                     throw new DuelCoreException($"Can't getting a component 'BaseProjectile' in item: '{active.info.shortname}'");
                 }
-                string[] data = new string[2];
-                data[0] = active.info.shortname;
+                int[] data = new int[2];
+                data[0] = active.info.itemid;
 
                 if(projectile.primaryMagazine.ammoType == null)
                 {
@@ -976,7 +975,7 @@ namespace Oxide.Plugins
                 }
                 else
                 {
-                    data[1] = projectile.primaryMagazine.ammoType.name;
+                    data[1] = projectile.primaryMagazine.ammoType.itemid;
 
                     return data;
                 }
@@ -986,30 +985,30 @@ namespace Oxide.Plugins
                 return null;
             }
         }
-        private void GiveChoisedWeapon(BasePlayer player, string weaponPref, string ammoPref, int amount = 120)
+        private void GiveChoisedWeapon(BasePlayer player, int weapon, int ammo, int amount = 120)
         {
-            if (weaponPref == null || ammoPref == null)
+            if (weapon == 0 || ammo == 0)
             {
-                SendReply(player, weaponPref);
-                SendReply(player, ammoPref);
+                SendReply(player, weapon.ToString());
+                SendReply(player, ammo.ToString());
 
                 return;
             }
 
-            Item weapon = ItemManager.CreateByPartialName(weaponPref);
-            Item ammo = ItemManager.CreateByPartialName(ammoPref, amount);
+            Item weaponItem = ItemManager.CreateByItemID(weapon);
+            Item ammoItem = ItemManager.CreateByItemID(ammo, amount);
 
-            if (weapon == null || ammo == null)
+            if (weaponItem == null || ammoItem == null)
             {
-                SendReply(player, weaponPref);
-                SendReply(player, ammoPref);
+                SendReply(player, weapon.ToString());
+                SendReply(player, ammo.ToString());
 
                 return;
             }
             else
             {
-                player.GiveItem(weapon);
-                player.GiveItem(ammo);
+                player.GiveItem(weaponItem);
+                player.GiveItem(ammoItem);
             }
         }
         #endregion
@@ -1295,9 +1294,8 @@ namespace Oxide.Plugins
         {
             if (player == null) return;
 
-            List<string> all = GetAllArenas();
             List<string> availible = new List<string>();
-            foreach(string arena in all)
+            foreach(string arena in GetAllArenas())
             {
                 if (!IsArenaIsBuzy(arena)) availible.Add($"Арена: {arena}. Статус: <color=#00d219>доступна</color>"); 
                 else availible.Add($"Арена: {arena}. Статус: <color=#d20015>не доступна</color>"); ;
@@ -1336,8 +1334,23 @@ namespace Oxide.Plugins
 
                 return;
             }
+            Item item = player.GetActiveItem() ?? null;
+            if(item == null)
+            {
+                SendReply(player, "Для запуска арены Вам требуется держать выбранное оружие в руке");
 
-            DuelRequest request = new DuelRequest(data, bet, arena);
+                return;
+            }
+
+            int[] weapon = GetWeaponData(item);
+            if(weapon == null)
+            {
+                SendReply(player, "Для запуска арены Вам требуется держать выбранное оружие в руке");
+
+                return;
+            }
+
+            DuelRequest request = new DuelRequest(data, bet, weapon[0], weapon[1], arena);
             m_Bets.Add(request);
 
             SendReply(player, GetMessage("info_request_created", this));
@@ -1402,21 +1415,7 @@ namespace Oxide.Plugins
                 Arena arena = new Arena(GenerateArenaId(), new ArenaPoints(arenaInfo.Value.ToVector3()), request.Initiator, request.Responser, timer, request.Bet);
                 arena.Boot(GetSpawnPoints(Team.Blue, request.Arena), GetSpawnPoints(Team.Red, request.Arena));
 
-                var item = FindPlayer(request.Initiator.Id)?.GetActiveItem() ?? null;
-                if(item == null)
-                {
-                    SendReply(FindPlayer(request.Initiator.Id), "Для начала арены, Вам требуется очистить инвентарь и взять в руку оружие, с которым Вы хотите принимать участие");
-
-                    return;
-                }
-                string[] weapon = GetWeaponData(item);
-                if (weapon == null)
-                {
-                    SendReply(FindPlayer(request.Initiator.Id), "Для начала арены, Вам требуется очистить инвентарь и взять в руку оружие, с которым Вы хотите принимать участие");
-
-                    return;
-                }
-                arena.InitializeWeapon(weapon[0], weapon[1]);
+                arena.InitializeWeapon(request.Weapon, request.Ammo);
                 m_ActiveArenas.Add(arena);
 
 
@@ -1427,6 +1426,9 @@ namespace Oxide.Plugins
                 {
                     TeleportHelper.TeleportToPoint(FindPlayer(request.Initiator.Id), arena.Spawns.GetRandom(request.Initiator.CurrentTeam));
                     TeleportHelper.TeleportToPoint(FindPlayer(request.Responser.Id), arena.Spawns.GetRandom(request.Responser.CurrentTeam));
+
+                    GiveChoisedWeapon(FindPlayer(request.Initiator.Id), request.Weapon, request.Ammo);
+                    GiveChoisedWeapon(FindPlayer(request.Responser.Id), request.Weapon, request.Ammo);
 
                     CancelDuelRequest(FindPlayer(request.Initiator.Id));
                 });
