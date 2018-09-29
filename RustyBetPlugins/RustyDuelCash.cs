@@ -220,17 +220,23 @@ namespace Oxide.Plugins
             public void OnVictory(int cash)
             {
                 ResetCurrents();
-                Victories++;
 
-                CalculateBalance(BalanceAction.Add, cash);
-                CalculateRating();
+                if (cash != 0)
+                {
+                    Victories++;
+                    CalculateBalance(BalanceAction.Add, cash);
+                    CalculateRating();
+                }
             }
-            public void OnLose()
+            public void OnLose(int cash)
             {
-                Loses++;
                 ResetCurrents();
 
-                CalculateRating();
+                if (cash != 0)
+                {
+                    Loses++;
+                    CalculateRating();
+                }
             }
 
             public void ResetCurrents()
@@ -1440,7 +1446,7 @@ namespace Oxide.Plugins
                 if (currentArena.RedPlayer.CurrentWins > currentArena.BluePlayer.CurrentWins)
                 {
                     currentArena.RedPlayer.OnVictory(currentArena.Cash);
-                    currentArena.BluePlayer.OnLose();
+                    currentArena.BluePlayer.OnLose(currentArena.Cash);
 
                     SendReply(FindPlayer(currentArena.RedPlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), currentArena.BluePlayer.Name));
                     SendReply(FindPlayer(currentArena.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_losed", this), currentArena.RedPlayer.Name));
@@ -1449,7 +1455,7 @@ namespace Oxide.Plugins
                 }
                 else if (currentArena.RedPlayer.CurrentWins < currentArena.BluePlayer.CurrentWins)
                 {
-                    currentArena.RedPlayer.OnLose();
+                    currentArena.RedPlayer.OnLose(currentArena.Cash);
                     currentArena.BluePlayer.OnVictory(currentArena.Cash);
 
                     SendReply(FindPlayer(currentArena.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), currentArena.RedPlayer.Name));
