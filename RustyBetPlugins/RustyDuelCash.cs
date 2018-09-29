@@ -41,7 +41,6 @@ namespace Oxide.Plugins
         private HashSet<DuelPlayer>                m_OnlinePlayers = new HashSet<DuelPlayer>();
         private List<Arena>                        m_ActiveArenas  = new List<Arena>();
         private List<DuelRequest>                  m_Bets          = new List<DuelRequest>();
-        private Dictionary<string, string>         m_Ammos         = new Dictionary<string, string>();
 
         public RustyDuelCashConfig m_Config;
         #endregion
