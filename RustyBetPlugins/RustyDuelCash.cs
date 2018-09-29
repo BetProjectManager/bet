@@ -219,6 +219,7 @@ namespace Oxide.Plugins
             public void OnVictory(int cash)
             {
                 ResetCurrents();
+                CurrentTeam = Team.None;
 
                 if (cash != 0)
                 {
@@ -230,6 +231,7 @@ namespace Oxide.Plugins
             public void OnLose(int cash)
             {
                 ResetCurrents();
+                CurrentTeam = Team.None;
 
                 if (cash != 0)
                 {
@@ -366,13 +368,30 @@ namespace Oxide.Plugins
                 CurrentWeapon = weapon;
                 CurrentAmmo   = ammo;
             }
-            public void Start(int secs, Action init, Action callback)
+            public void StartTraining(int secs, Action init, Action callback)
+            {
+                Start(secs, init, callback);
+            }
+            public void StartBattle(int secs, Action init, Action final)
+            {
+                Start(secs, init, final);
+            }
+            private void Start(int secs, Action init, Action callback)
             {
                 CurrentTimer.Instantiate(m_tInstance, secs, callback, init);
+            }
+            public void DestroyTimers()
+            {
+                CurrentTimer.Destroy();
             }
             public void Kick(DuelPlayer player)
             {
                 TeleportHelper.TeleportToPoint(FindPlayer(player.Id), player.OldPoint);
+            }
+            public void RespawnMembers()
+            {
+                TeleportHelper.TeleportToPoint(FindPlayer(RedPlayer.Id), Spawns.GetRandom(Team.Red));
+                TeleportHelper.TeleportToPoint(FindPlayer(BluePlayer.Id), Spawns.GetRandom(Team.Blue));
             }
 
             public void ForceDestroy()
@@ -813,6 +832,74 @@ namespace Oxide.Plugins
             else
             {
                 return null;
+            }
+        }
+        private T GetRepository<T>(string playerId, bool isArenaInitiator = false)
+        {
+            if(typeof(T) == typeof(DuelPlayer))
+            {
+                if(m_OnlinePlayers.Any((x) => x.Id == playerId))
+                {
+                    return (T)(object)m_OnlinePlayers.Where((x) => x.Id == playerId).First();
+                }
+                else
+                {
+                    return (T)(object)null;
+                }
+            }
+            else if(typeof(T) == typeof(DuelRequest))
+            {
+                if(isArenaInitiator)
+                {
+                    if(m_Bets.Any((x) => x.Initiator.Id == playerId))
+                    {
+                        return (T)(object)m_Bets.Where((x) => x.Initiator.Id == playerId).First();
+                    }
+                    else
+                    {
+                        return (T)(object)null;
+                    }
+                }
+                else
+                {
+                    if (m_Bets.Any((x) => x.Responser.Id == playerId))
+                    {
+                        return (T)(object)m_Bets.Where((x) => x.Initiator.Id == playerId).First();
+                    }
+                    else
+                    {
+                        return (T)(object)null;
+                    }
+                }
+            }
+            else if(typeof(T) == typeof(Arena))
+            {
+                if(isArenaInitiator)
+                {
+                    if(m_ActiveArenas.Any((x) => x.RedPlayer.Id == playerId))
+                    {
+                        return (T)(object)m_ActiveArenas.Where((x) => x.RedPlayer.Id == playerId).First();
+                    }
+                    else
+                    {
+                        return (T)(object)null;
+                    }
+                }
+                else
+                {
+                    if (m_ActiveArenas.Any((x) => x.BluePlayer.Id == playerId))
+                    {
+                        return (T)(object)m_ActiveArenas.Where((x) => x.BluePlayer.Id == playerId).First();
+                    }
+                    else
+                    {
+                        return (T)(object)null;
+                    }
+                }
+            }
+            else
+            {
+                return (T)(object)null;
             }
         }
         private void OnSpawn(BasePlayer player)
@@ -1367,6 +1454,36 @@ namespace Oxide.Plugins
         }
         #endregion
 
+        #region Player Instruments
+        private void HealPlayer(BasePlayer player)
+        {
+            player.Heal(100f);
+        }
+        private string ToNormalTimeString(int seconds)
+        {
+            TimeSpan span = new TimeSpan(seconds);
+            string time = string.Empty;
+            if(span.Days > 0)
+            {
+                time += $"{span.Days}д. ";
+            }
+            if(span.Days > 0)
+            {
+                time += $"{span.Hours}ч. ";
+            }
+            if(span.Minutes > 0)
+            {
+                time += $"{span.Minutes}м. ";
+            }
+            if(span.Seconds > 0)
+            {
+                time += $"{span.Seconds}с.";
+            }
+
+            return time;
+        }
+        #endregion
+
         #region Arena Instruments
         private List<Vector3> GetSpawnPoints(Team team, string arena)
         {
@@ -1430,7 +1547,43 @@ namespace Oxide.Plugins
                     GiveChoisedWeapon(FindPlayer(request.Initiator.Id), request.Weapon, request.Ammo);
                     GiveChoisedWeapon(FindPlayer(request.Responser.Id), request.Weapon, request.Ammo);
 
+                    HealPlayer(FindPlayer(request.Initiator.Id));
+                    HealPlayer(FindPlayer(request.Responser.Id));
+
                     CancelDuelRequest(FindPlayer(request.Initiator.Id));
+
+                    if(m_ActiveArenas.Contains(arena))
+                    {
+
+                        Arena current = m_ActiveArenas.Where((x) => x.Id == arena.Id).First();
+                        current.StartTraining(m_Config.TrainSeconds, () =>
+                        {
+                            SendReply(FindPlayer(current.RedPlayer.Id), $"Тренировка началась и будет длиться {ToNormalTimeString(m_Config.TrainSeconds)}");
+                            SendReply(FindPlayer(current.BluePlayer.Id), $"Тренировка началась и будет длиться {ToNormalTimeString(m_Config.TrainSeconds)}");
+                        }, () =>
+                        {
+                            current.DestroyTimers();
+                            current.RespawnMembers();
+
+                            HealPlayer(FindPlayer(current.BluePlayer.Id));
+                            HealPlayer(FindPlayer(current.RedPlayer.Id));
+
+                            ClearInventory(FindPlayer(current.BluePlayer.Id));
+                            ClearInventory(FindPlayer(current.RedPlayer.Id));
+
+                            current.StartBattle(m_Config.MatchSeconds, () =>
+                            {
+                                GiveChoisedWeapon(FindPlayer(current.BluePlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
+                                GiveChoisedWeapon(FindPlayer(current.RedPlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
+
+                                SendReply(FindPlayer(current.RedPlayer.Id), $"Бой начался и закончится через: {ToNormalTimeString(m_Config.MatchSeconds)}");
+                                SendReply(FindPlayer(current.BluePlayer.Id), $"Бой начался и закончится через: {ToNormalTimeString(m_Config.MatchSeconds)}");
+                            }, () =>
+                            {
+                                StopArena(current.RedPlayer);
+                            });
+                        });
+                    }
                 });
             }
             else
