@@ -1461,7 +1461,7 @@ namespace Oxide.Plugins
         }
         private string ToNormalTimeString(int seconds)
         {
-            TimeSpan span = new TimeSpan(seconds);
+            TimeSpan span = TimeSpan.FromSeconds(seconds);
             string time = string.Empty;
             if(span.Days > 0)
             {
