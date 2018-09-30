@@ -861,7 +861,7 @@ namespace Oxide.Plugins
         }
         private bool IsAlreadyRequested(BasePlayer player)
         {
-            return m_Bets.Any((x) => x.Initiator.Id == player.UserIDString);
+            return GetRepository<DuelRequest>(player.UserIDString) != null ? true : false;
         }
         private bool IsAllowedWeapon(string prefab)
         {
