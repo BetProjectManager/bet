@@ -584,8 +584,9 @@ namespace Oxide.Plugins
                     ArenaCheckRadius       = 75,
                     ArenasCoordinates      = new Dictionary<string, string>()
                     {
-                        ["<color=#537bf8>Снежные Пики</color>"]    = "(-124.3, 93.7, -144.4)",
-                        ["<color=#ee4444>Мясорубка</color>"]       = "(-397.3, 101.1, 418.3)",
+                        ["Снежные Пики"]    = "(-124.3, 93.7, -144.4)",
+                        ["Мясорубка"]       = "(-397.3, 101.1, 418.3)",
+                        ["Буря в Пустыне"]  = "(-327.1, 100.0, 106.9)",
                     },
                     RedSpawnCoordinates = new Dictionary<string, string[]>()
                     {
@@ -604,7 +605,15 @@ namespace Oxide.Plugins
                             "(-340.4, 100.1, 423.7)",
                             "(-363.8, 100.4, 420.4)",
                             "(-378.6, 101.0, 464.4)"
-                        }
+                        },
+                        ["Буря в Пустыне"] = new string[]
+                        {
+                            "(-421.2, 102.0, 172.8)",
+                            "(-444.9, 101.4, 169.3)",
+                            "(-462.0, 103.0, 167.6)",
+                            "(-451.8, 102.3, 207.2)",
+                            "(-479.5, 101.9, 198.7)"
+                        },
                     },
                     BlueSpawnCoordinates = new Dictionary<string, string[]>()
                     {
@@ -623,7 +632,15 @@ namespace Oxide.Plugins
                             "(-460.1, 100.0, 418.9)",
                             "(-445.3, 100.2, 415.7)",
                             "(-428.1, 100.6, 421.4)"
-                        }
+                        },
+                        ["Буря в Пустыне"] = new string[]
+                        {
+                            "(-462.6, 100.2, 417.7)",
+                            "(-458.4, 100.2, 426.1)",
+                            "(-460.1, 100.0, 418.9)",
+                            "(-445.3, 100.2, 415.7)",
+                            "(-428.1, 100.6, 421.4)"
+                        },
                     },
                     ArenasPermissions      = new Dictionary<string, List<string>>()
                     {
@@ -640,11 +657,13 @@ namespace Oxide.Plugins
                         {
                             "Снежные Пики",
                             "Мясорубка",
+                            "Буря в Пустыне"
                         },
                         ["rustyduelcash.admin"] = new List<string>()
                         {
                             "Снежные Пики",
                             "Мясорубка",
+                            "Буря в Пустыне"
                         }
                     },
                     AllowedWeaponList      = new List<string>()
