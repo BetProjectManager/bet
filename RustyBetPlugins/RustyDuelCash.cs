@@ -689,13 +689,14 @@ namespace Oxide.Plugins
         }
         public void SavePlayer(BasePlayer player, bool all = false)
         {
-            if (m_OnlinePlayers.Any((x) => x.Id == player.UserIDString))
+            DuelPlayer saveable = GetRepository<DuelPlayer>(player.UserIDString);
+            if(saveable != null)
             {
-                m_OnlinePlayers.Where((x) => x.Id == player.UserIDString).First().Destroy();
+                saveable.Destroy();
 
-                Interface.Oxide.DataFileSystem.WriteObject($"{Title}\\{player.UserIDString}", m_OnlinePlayers.Where((x) => x.Id == player.UserIDString).First());
+                Interface.Oxide.DataFileSystem.WriteObject($"{Title}\\{player.UserIDString}", saveable);
 
-                if (!all) m_OnlinePlayers.Remove(m_OnlinePlayers.Where((x) => x.Id == player.UserIDString).First());
+                if (!all) m_OnlinePlayers.Remove(saveable);
             }
             else
             {
