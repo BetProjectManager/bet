@@ -393,7 +393,6 @@ namespace Oxide.Plugins
                 TeleportHelper.TeleportToPoint(FindPlayer(RedPlayer.Id), Spawns.GetRandom(Team.Red));
                 TeleportHelper.TeleportToPoint(FindPlayer(BluePlayer.Id), Spawns.GetRandom(Team.Blue));
             }
-
             public void ForceDestroy()
             {
                 RedPlayer.ForceDestroy(Cash / 2);
@@ -589,7 +588,7 @@ namespace Oxide.Plugins
                     ChatPrefix             = "[DUELS]: ",
                     EnableChatPrefix       = true,
                     TrainSeconds           = 60,
-                    MatchSeconds           = 600,
+                    MatchSeconds           = 180,
                     EnableDeserterSystem   = true,
                     DeserterDebuffTime     = 600,
                     TimeToTeleportOnArena  = 10,
@@ -725,9 +724,9 @@ namespace Oxide.Plugins
                 ["arena_not_found"]                    = "Указанная Вами арена не найдена или не доступна",
                 ["arena_stop_you_losed"]               = "Вы проиграли игроку '{0}'. Скоро Вы будете возвращены домой",
                 ["arena_stop_you_win"]                 = "Вы выиграли игрока '{0}'. Скоро вы будете возвращены домой",
-                ["arena_stop_global_message_normal"]   = "Арена #{0} -> Победил: {1} : Проиграл: {2}",
+                ["arena_stop_global_message_normal"]   = "Арена #{0}({1}) -> Победил: {2} : Проиграл: {3}",
                 ["arena_stop_standoff"]                = "Вы сыграли в ничью. Ваша ставка возвращена Вам",
-                ["arena_stop_global_message_standoff"] = "Арена #{0} -> Бойцы сыграли в ничью",
+                ["arena_stop_global_message_standoff"] = "Арена #{0}({1}) -> Бойцы сыграли в ничью",
                 ["error_not_weapon_in_hands"]          = "Для участия у Вас должен быть очищен инвентарь и выбрано оружие в руках",
                 ["info_request_created"]               = "Запрос на дуэль принят. Ожидайте пока кто-нибудь подтвердит",
                 ["error_incorrect_rdc_create"]         = "Непонятная команда. Используется она так: /rdc.create 50 RadiationKey, кстати, узнать списки доступных арен можно введя /rdc.arenas",
@@ -812,29 +811,7 @@ namespace Oxide.Plugins
         {
             return m_Config.AllowedWeaponList.Any((x) => x.Contains(prefab));
         }
-        private T FindInitiatorByName<T>(string name) where T : class
-        {
-            if(m_Bets.Any((x) => x.Initiator.Name.Contains(name)))
-            {
-                if(typeof(T) == typeof(DuelRequest))
-                {
-                    return (T)(object)m_Bets.Where((x) => x.Initiator.Name.Contains(name)).First();
-                }
-                else if(typeof(T) == typeof(DuelPlayer))
-                {
-                    return (T)(object)m_Bets.Where((x) => x.Initiator.Name.Contains(name)).First().Initiator;
-                }
-                else
-                {
-                    throw new DuelCoreException($"Incorrect type '{typeof(T)}' for find. Must be a DuelRequest and DuelPlayer");
-                }
-            }
-            else
-            {
-                return null;
-            }
-        }
-        private T GetRepository<T>(string playerId, bool isArenaInitiator = false)
+        private T GetRepository<T>(string playerId) where T : class
         {
             if(typeof(T) == typeof(DuelPlayer))
             {
@@ -849,52 +826,32 @@ namespace Oxide.Plugins
             }
             else if(typeof(T) == typeof(DuelRequest))
             {
-                if(isArenaInitiator)
+                if (m_Bets.Any((x) => x.Initiator.Id == playerId))
                 {
-                    if(m_Bets.Any((x) => x.Initiator.Id == playerId))
-                    {
-                        return (T)(object)m_Bets.Where((x) => x.Initiator.Id == playerId).First();
-                    }
-                    else
-                    {
-                        return (T)(object)null;
-                    }
+                    return (T)(object)m_Bets.Where((x) => x.Initiator.Id == playerId).First();
+                }
+                else if(m_Bets.Any((x) => x.Responser.Id == playerId))
+                {
+                    return (T)(object)m_Bets.Where((x) => x.Responser.Id == playerId).First();
                 }
                 else
                 {
-                    if (m_Bets.Any((x) => x.Responser.Id == playerId))
-                    {
-                        return (T)(object)m_Bets.Where((x) => x.Initiator.Id == playerId).First();
-                    }
-                    else
-                    {
-                        return (T)(object)null;
-                    }
+                    return (T)(object)null;
                 }
             }
             else if(typeof(T) == typeof(Arena))
             {
-                if(isArenaInitiator)
+                if (m_ActiveArenas.Any((x) => x.RedPlayer.Id == playerId))
                 {
-                    if(m_ActiveArenas.Any((x) => x.RedPlayer.Id == playerId))
-                    {
-                        return (T)(object)m_ActiveArenas.Where((x) => x.RedPlayer.Id == playerId).First();
-                    }
-                    else
-                    {
-                        return (T)(object)null;
-                    }
+                    return (T)(object)m_ActiveArenas.Where((x) => x.RedPlayer.Id == playerId).First();
+                }
+                else if(m_ActiveArenas.Any((x) => x.BluePlayer.Id == playerId))
+                {
+                    return (T)(object)m_ActiveArenas.Where((x) => x.BluePlayer.Id == playerId).First();
                 }
                 else
                 {
-                    if (m_ActiveArenas.Any((x) => x.BluePlayer.Id == playerId))
-                    {
-                        return (T)(object)m_ActiveArenas.Where((x) => x.BluePlayer.Id == playerId).First();
-                    }
-                    else
-                    {
-                        return (T)(object)null;
-                    }
+                    return (T)(object)null;
                 }
             }
             else
@@ -1119,137 +1076,6 @@ namespace Oxide.Plugins
         }
         #endregion
 
-        #region UI
-        public class UI
-        {
-            public static CuiElementContainer CreateElementContainer(string panelName, string color, string aMin, string aMax, bool useCursor = false, string parent = "Overlay")
-            {
-                var NewElement = new CuiElementContainer()
-                {
-                    {
-                        new CuiPanel
-                        {
-                            Image = {Color = color},
-                            RectTransform = {AnchorMin = aMin, AnchorMax = aMax},
-                            CursorEnabled = useCursor
-                        },
-                        new CuiElement().Parent = parent,
-                        panelName
-                    }
-                };
-                return NewElement;
-            }
-
-            public static void LoadImage(ref CuiElementContainer container, string panel, string url, string aMin, string aMax)
-            {
-                container.Add(new CuiElement
-                {
-                    Name = CuiHelper.GetGuid(),
-                    Parent = panel,
-                    FadeOut = 0.15f,
-                    Components =
-                    {
-                        new CuiRawImageComponent { Url = url, FadeIn = 0.3f },
-                        new CuiRectTransformComponent { AnchorMin = aMin, AnchorMax = aMax }
-                    }
-                });
-            }
-
-            public static void CreateInput(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, bool password, int charLimit, TextAnchor align = TextAnchor.MiddleCenter)
-            {
-                container.Add(new CuiElement
-                {
-                    Name = CuiHelper.GetGuid(),
-                    Parent = panel,
-                    Components =
-                    {
-                        new CuiInputFieldComponent { Text = text, FontSize = size, Align = align, Color = color, Command = command, IsPassword = password, CharsLimit = charLimit},
-                        new CuiRectTransformComponent {AnchorMin = aMin, AnchorMax = aMax }
-                    }
-                });
-            }
-
-            public static void CreatePanel(ref CuiElementContainer container, string panel, string color, string aMin, string aMax, bool cursor = false)
-            {
-                container.Add(new CuiPanel
-                {
-                    Image = { Color = color },
-                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
-                    CursorEnabled = cursor
-                },
-                panel);
-            }
-
-            public static void CreateText(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, TextAnchor align = TextAnchor.MiddleCenter)
-            {
-                container.Add(new CuiLabel
-                {
-                    Text = { Color = color, FontSize = size, Align = align, Text = text },
-                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax }
-                },
-                panel);
-            }
-
-            public static void CreateButton(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, TextAnchor align = TextAnchor.MiddleCenter)
-            {
-                container.Add(new CuiButton
-                {
-                    Button = { Color = color, Command = command, FadeIn = 1.0f },
-                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
-                    Text = { Text = text, FontSize = size, Align = align }
-                },
-                panel);
-            }
-
-            public static string Color(string hexColor, float alpha)
-            {
-                if (hexColor.StartsWith("#"))
-                {
-                    hexColor = hexColor.TrimStart('#');
-                }
-
-                int red = int.Parse(hexColor.Substring(0, 2), NumberStyles.AllowHexSpecifier);
-                int green = int.Parse(hexColor.Substring(2, 2), NumberStyles.AllowHexSpecifier);
-                int blue = int.Parse(hexColor.Substring(4, 2), NumberStyles.AllowHexSpecifier);
-                return $"{(double)red / 255} {(double)green / 255} {(double)blue / 255} {alpha}";
-            }
-        }
-
-        public void ShowDuelsList(BasePlayer player)
-        {
-            //CuiElementContainer container = UI.CreateElementContainer("RustyDuelCashDuelList", "0.0006764603 0.0006764603 0.0006764603 0.7144409", "0.2480469 0.2916667", "0.75 0.7343751", true);
-
-            ///*
-            // * HEADER START
-            // */
-            //UI.CreatePanel(ref container, "RustyDuelCashDuelList", "0.8131743 0.8131743 0.8131743 0.5686275", "0.003891058 0.8235293", "0.9941635 0.9941176");
-            //UI.CreateText(ref container, "RustyDuelCashDuelList", "0.3176471 0.1215686 0.572549 1", "Список дуэлей: ", 34, "0.02357566 0.08620673", "0.4204322 0.7758625");
-            //UI.CreatePanel(ref container, "RustyDuelCashDuelList", "0.3176471 0.1176471 0.5686275 0.5568628", "0.003891051 0.7617646", "0.9961089 0.8205882", true);
-            //UI.CreateText(ref container, "RustyDuelCashDuelList", "1 1 1 1", "Игрок: ", 14, "0.005893901 -0.05000114", "0.2514735 1");
-            //UI.CreateText(ref container, "RustyDuelCashDuelList", "1 1 1 1", "Ставка: ", 14, "0.2538948 0.1028655", "0.4341847 0.9000016");
-            //UI.CreateText(ref container, "RustyDuelCashDuelList", "1 1 1 1", "Арена: ", 14, "0.4424998 0.1028675", "0.7387035 0.9000036");
-            //if(m_Bets.Count > 0)
-            //{
-            //    DuelRequest request = m_Bets.First();
-
-            //    UI.CreatePanel(ref container, $"RustyDuelCashDuelList", "0.7019002 0.7019002 0.7019002 0.09661709", "0.003891051 0.6823528", "0.9941635 0.7617647", true);
-            //    UI.CreateText(ref container, $"RustyDuelCashDuelList", "1 1 1 1", request.Initiator.Name, 14, "0.005928867 1.196993", "0.2490118 2.036714");
-            //    UI.CreateText(ref container, $"RustyDuelCashDuelList", "1 1 1 1", request.Bet.ToString(), 14, "0.3632812 0.5703125", "0.4765625 0.5976563");
-            //    UI.CreateText(ref container, $"RustyDuelCashDuelList", "1 1 1 1", request.Arena, 14, "0.4716797 0.5716145", "0.6142578 0.5989583");
-            //    UI.CreateButton(ref container, $"RustyDuelCashDuelList", "0.01737355 0.5522067 0.007965274 0.4842647", "Принять", 14, "0.771642 0.0370349", "0.9999883 0.9259235", "rdc.accept");
-            //}
-
-            //CuiHelper.AddUi(player, container);
-
-            var json = "[{\"name\":\"GeneralPanel\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"UnityEngine.UI.Image\",\"color\":\"0.0006764603 0.0006764603 0.0006764603 0.7144409\"},{\"type\":\"NeedsCursor\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.2480469 0.2916667\",\"anchormax\":\"0.75 0.7343751\",\"offsetmax\":\"0 0\"}]},{\"name\":\"Header\",\"parent\":\"GeneralPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Image\",\"color\":\"0.8131743 0.8131743 0.8131743 0.5686275\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.003891058 0.8235293\",\"anchormax\":\"0.9941635 0.9941176\",\"offsetmax\":\"0 0\"}]},{\"name\":\"HeaderText\",\"parent\":\"Header\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"Список дуэлей: \",\"fontSize\":34,\"align\":\"MiddleCenter\",\"color\":\"0.3176471 0.1215686 0.572549 1\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.02357566 0.08620673\",\"anchormax\":\"0.4577603 0.8793101\",\"offsetmax\":\"0 0\"}]},{\"name\":\"SeparatorLine\",\"parent\":\"GeneralPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Image\",\"color\":\"0.3176471 0.1176471 0.5686275 0.5568628\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.003891051 0.7617646\",\"anchormax\":\"0.9961089 0.8205882\",\"offsetmax\":\"0 0\"}]},{\"name\":\"SeparatorName\",\"parent\":\"SeparatorLine\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"игрок\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.005893901 -0.05000114\",\"anchormax\":\"0.2514735 1\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"SeparatorBet\",\"parent\":\"SeparatorLine\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"ставка\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.2538948 0.1028655\",\"anchormax\":\"0.4341847 0.9000016\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"SeparatorArena\",\"parent\":\"SeparatorLine\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"арена\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.4424998 0.1028675\",\"anchormax\":\"0.7387035 0.9000036\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataPanel\",\"parent\":\"GeneralPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Image\",\"color\":\"0.7019002 0.7019002 0.7019002 0.09661709\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.003891051 0.6823528\",\"anchormax\":\"0.9941635 0.7617647\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataBet\",\"parent\":\"DuelDataPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"50\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.3632812 0.5703125\",\"anchormax\":\"0.4765625 0.5976563\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataArena\",\"parent\":\"DuelDataPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"Радиационный ключ\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.4716797 0.5716145\",\"anchormax\":\"0.6142578 0.5989583\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataEnjoyButton\",\"parent\":\"DuelDataPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Button\",\"color\":\"0.01737355 0.5522067 0.007965274 0.4842647\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.771642 0.0370349\",\"anchormax\":\"0.9999883 0.9259235\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataEnjoyText\",\"parent\":\"DuelDataEnjoyButton\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"принять\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.640625 0.5716145\",\"anchormax\":\"0.7382813 0.5976563\",\"offsetmax\":\"0 0\"}]},{\"name\":\"DuelDataPlayer\",\"parent\":\"DuelDataPanel\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"__red\",\"fontSize\":12,\"align\":\"MiddleCenter\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.005928867 1.196993\",\"anchormax\":\"0.2490118 2.036714\",\"offsetmin\":\"0 0\",\"offsetmax\":\"0 0\"}]},{\"name\":\"Footer\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"UnityEngine.UI.Image\",\"color\":\"0.654902 0.654902 0.654902 0.5604309\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.2490234 0.2929688\",\"anchormax\":\"0.7490234 0.3242188\",\"offsetmax\":\"0 0\"}]},{\"name\":\"BalanceText\",\"parent\":\"Footer\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"Bаланс: 147\",\"fontSize\":16,\"align\":\"MiddleRight\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.8007813 0.04166698\",\"anchormax\":\"0.9902344 0.916667\",\"offsetmax\":\"0 0\"}]},{\"name\":\"RatingText\",\"parent\":\"Footer\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"Рейтинг: 1276\",\"fontSize\":16,\"align\":\"MiddleLeft\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.2519531 0.04166603\",\"anchormax\":\"0.4472656 0.875\",\"offsetmax\":\"0 0\"}]},{\"name\":\"VictoriesText\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"UnityEngine.UI.Text\",\"text\":\"Статистика: 14/2\",\"fontSize\":16,\"align\":\"MiddleLeft\"},{\"type\":\"RectTransform\",\"anchormin\":\"0.2519531 0.2942708\",\"anchormax\":\"0.3720703 0.3203125\",\"offsetmax\":\"0 0\"}]},{\"name\":\"CuiElement\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"RectTransform\",\"anchormin\":\"0.09765625 0.1302083\",\"anchormax\":\"0.1953125 0.2604167\",\"offsetmax\":\"0 0\"}]},{\"name\":\"CuiElement\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"RectTransform\",\"anchormin\":\"0.09765625 0.1302083\",\"anchormax\":\"0.1953125 0.2604167\",\"offsetmax\":\"0 0\"}]},{\"name\":\"CuiElement\",\"parent\":\"Overlay\",\"components\":[{\"type\":\"RectTransform\",\"anchormin\":\"0.125 0.125\",\"anchormax\":\"0.2314453 0.1875\",\"offsetmax\":\"0 0\"}]}]";
-            CuiHelper.AddUi(player, json);
-        }
-        public void DestroyDuelList(BasePlayer player)
-        {
-            CuiHelper.DestroyUi(player, "RustyDuelCashDuelList");
-        }
-        #endregion
-
         #region Commands
         [ChatCommand("rdc.admin.position")]
         private void CmdChatAdminPosition(BasePlayer player, string command, string[] args)
@@ -1259,7 +1085,6 @@ namespace Oxide.Plugins
 
             SendReply(player, $"Позиция: {player.transform.position}");
         }
-
         [ChatCommand("rdc.create")]
         private void CmdChatCreateDuel(BasePlayer player, string command, string[] args)
         {
@@ -1335,7 +1160,9 @@ namespace Oxide.Plugins
 
                 return;
             }
-            DuelRequest request = FindInitiatorByName<DuelRequest>(args[0]);
+            string initiatorId = FindPlayer(args[0])?.UserIDString ?? string.Empty;
+
+            DuelRequest request = GetRepository<DuelRequest>(initiatorId);
             if (request == null)
             {
                 SendReply(player, "Дуэль с таким инициатором не найден. Укажите корректное имя");
@@ -1375,7 +1202,6 @@ namespace Oxide.Plugins
                 InitializeArena(request);
             }
         }
-
         [ChatCommand("rdc.arenas")]
         private void CmdChatArenasList(BasePlayer player, string command, string[] args)
         {
@@ -1394,7 +1220,6 @@ namespace Oxide.Plugins
                 SendReply(player, arena);
             }
         }
-
         [ChatCommand("rdc.cancel")]
         private void CmdChatArenasCancel(BasePlayer player, string command, string[] args)
         {
@@ -1402,6 +1227,22 @@ namespace Oxide.Plugins
             if (!IsAlreadyRequested(player)) return;
 
             CancelDuelRequest(player);
+        }
+        [ChatCommand("arena.leave")]
+        private void CmdChatArenaLeave(BasePlayer player, string command, string[] args)
+        {
+            if (player == null) return;
+            if (!IsArenaMember(player)) return;
+
+            Arena arena = GetRepository<Arena>(player.UserIDString);
+            if(arena.RedPlayer.Id == player.UserIDString)
+            {
+                StopArena(GetRepository<DuelPlayer>(player.UserIDString), Team.Blue);
+            }
+            else
+            {
+                StopArena(GetRepository<DuelPlayer>(player.UserIDString), Team.Red);
+            }
         }
         #endregion
 
@@ -1436,6 +1277,14 @@ namespace Oxide.Plugins
 
                 return;
             }
+            if(arena == "Случайно")
+            {
+                arena = m_Config.ArenasCoordinates.Keys.ToList().GetRandom();
+                while(IsArenaIsBuzy(arena))
+                {
+                    arena = m_Config.ArenasCoordinates.Keys.ToList().GetRandom();
+                }
+            }
 
             DuelRequest request = new DuelRequest(data, bet, weapon[0], weapon[1], arena);
             m_Bets.Add(request);
@@ -1444,7 +1293,7 @@ namespace Oxide.Plugins
         }
         private void CancelDuelRequest(BasePlayer player)
         {
-            DuelRequest request = FindInitiatorByName<DuelRequest>(player.displayName);
+            DuelRequest request = GetRepository<DuelRequest>(player.UserIDString);
             if(m_Bets.Contains(request))
             {
                 m_Bets.Remove(request);
@@ -1592,44 +1441,82 @@ namespace Oxide.Plugins
                 SendReply(FindPlayer(request.Responser.Id), GetMessage("arena_not_found", this));
             }
         }
-        public void StopArena(DuelPlayer redOrBluePlayer)
+        public void StopArena(DuelPlayer redOrBluePlayer, Team winner = Team.None)
         {
             if(m_ActiveArenas.Any((x) => x.RedPlayer == redOrBluePlayer))
             {
-                Arena currentArena = m_ActiveArenas.Where((x) => x.RedPlayer == redOrBluePlayer).First();
-                if (currentArena.RedPlayer.CurrentWins > currentArena.BluePlayer.CurrentWins)
+                Arena current = GetRepository<Arena>(redOrBluePlayer.Id);
+
+                if (winner != Team.None)
                 {
-                    currentArena.RedPlayer.OnVictory(currentArena.Cash);
-                    currentArena.BluePlayer.OnLose(currentArena.Cash);
+                    if (winner == Team.Red)
+                    {
+                        current.RedPlayer.OnVictory(current.Cash);
+                        current.BluePlayer.OnLose(current.Cash);
 
-                    SendReply(FindPlayer(currentArena.RedPlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), currentArena.BluePlayer.Name));
-                    SendReply(FindPlayer(currentArena.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_losed", this), currentArena.RedPlayer.Name));
+                        SendReply(FindPlayer(current.RedPlayer.Id), $"Синий игрок покинул арену раньше времени, Вы автоматически являетесь победителем");
+                        SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), current.Id, current.CurrentArena, current.RedPlayer.Name, current.BluePlayer.Name));
+                    }
+                    else if (winner == Team.Blue)
+                    {
+                        current.BluePlayer.OnVictory(current.Cash);
+                        current.RedPlayer.OnLose(current.Cash);
 
-                    SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), currentArena.Id, currentArena.RedPlayer.Name, currentArena.BluePlayer.Name));
-                }
-                else if (currentArena.RedPlayer.CurrentWins < currentArena.BluePlayer.CurrentWins)
-                {
-                    currentArena.RedPlayer.OnLose(currentArena.Cash);
-                    currentArena.BluePlayer.OnVictory(currentArena.Cash);
+                        SendReply(FindPlayer(current.RedPlayer.Id), $"Красный игрок покинул арену раньше времени, Вы автоматически являетесь победителем");
+                        SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), current.Id, current.CurrentArena, current.BluePlayer.Name, current.RedPlayer.Name));
+                    }
+                    else
+                    {
+                        throw new DuelCoreException($"Incorrect winner type: {winner}, breaking manual stopping the arena");
+                    }
 
-                    SendReply(FindPlayer(currentArena.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), currentArena.RedPlayer.Name));
-                    SendReply(FindPlayer(currentArena.RedPlayer.Id), string.Format(GetMessage("arena_stop_you_losed", this), currentArena.BluePlayer.Name));
-
-                    SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message", this), currentArena.Id, currentArena.BluePlayer.Name, currentArena.RedPlayer.Name));
+                    current.Kick(current.RedPlayer);
+                    current.Kick(current.BluePlayer);
                 }
                 else
                 {
-                    currentArena.RedPlayer.ForceDestroy(currentArena.Cash / 2);
-                    currentArena.BluePlayer.ForceDestroy(currentArena.Cash / 2);
+                    if (current.RedPlayer.CurrentWins > current.BluePlayer.CurrentWins)
+                    {
+                        current.RedPlayer.OnVictory(current.Cash);
+                        current.BluePlayer.OnLose(current.Cash);
 
-                    SendReply(FindPlayer(currentArena.RedPlayer.Id), GetMessage("arena_stop_standoff", this));
-                    SendReply(FindPlayer(currentArena.RedPlayer.Id), GetMessage("arena_stop_standoff", this));
+                        SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), current.BluePlayer.Name));
+                        SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_losed", this), current.RedPlayer.Name));
 
-                    SendGlobalMessage(GetMessage("arena_stop_global_message_standoff", this));
+                        SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), current.Id, current.RedPlayer.Name, current.BluePlayer.Name));
+                    }
+                    else if (current.RedPlayer.CurrentWins < current.BluePlayer.CurrentWins)
+                    {
+                        current.RedPlayer.OnLose(current.Cash);
+                        current.BluePlayer.OnVictory(current.Cash);
+
+                        SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("arena_stop_you_win", this), current.RedPlayer.Name));
+                        SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("arena_stop_you_losed", this), current.BluePlayer.Name));
+
+                        SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message", this), current.Id, current.CurrentArena, current.BluePlayer.Name, current.RedPlayer.Name));
+                    }
+                    else
+                    {
+                        current.RedPlayer.ForceDestroy(current.Cash / 2);
+                        current.BluePlayer.ForceDestroy(current.Cash / 2);
+
+                        SendReply(FindPlayer(current.RedPlayer.Id), GetMessage("arena_stop_standoff", this));
+                        SendReply(FindPlayer(current.RedPlayer.Id), GetMessage("arena_stop_standoff", this));
+
+                        SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_standoff", this), current.Id, current.CurrentArena));
+                    }
+
+                    current.Kick(current.RedPlayer);
+                    current.Kick(current.BluePlayer);
                 }
 
-                currentArena.Kick(currentArena.RedPlayer);
-                currentArena.Kick(currentArena.BluePlayer);
+                RestoreAllContainers(FindPlayer(current.RedPlayer.Id));
+                RestoreAllContainers(FindPlayer(current.BluePlayer.Id));
+
+                if(m_ActiveArenas.Contains(current))
+                {
+                    m_ActiveArenas.Remove(current);
+                }
             }
         }
         private int GenerateArenaId()
