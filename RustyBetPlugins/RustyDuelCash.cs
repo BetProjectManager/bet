@@ -34,7 +34,7 @@ namespace __red.RustyDuelCash.Exceptions
 
 namespace Oxide.Plugins
 {
-    [Info("RustyDuelCash", "__red", "0.0.1")]
+    [Info("RustyDuelCash (prealpha version)", "__red", "0.22.1687")]
     class RustyDuelCash : RustPlugin
     {
         #region Fields
@@ -792,6 +792,22 @@ namespace Oxide.Plugins
                 ["error_you_dnt_exists_in_database"]   = "Упс! Мы не нашли Вас в базе данных, скорее всего Разраюотчик уже решает эту проблему",
                 ["error_bet_disallow_zero"]            = "А Вы себе как представляете ставку ниже нуля ?",
                 ["error_arena_dnt_exists"]             = "Введенная Вами арена не существует, список доступных арен: /rdc.arenas",
+                ["info_duel_list_empty"]               = "Доступных дуэлей нет",
+                ["info_duel_list_title"]               = "Доступные дуэли: ",
+                ["info_duel_list_item"]                = "Игрок: {0}, Ставка: {1}, Арена: {2}",
+                ["info_duel_list_footer"]              = "Для того, чтобы принять дуэль введите: /rdc.accept [ник игрока] (можно сокращенно)",
+                ["error_command_rdcaccept_length"]     = "Неправильное использование команды. Используйте /rdc.accept ялюблюадмина",
+                ["error_initiator_not_found"]          = "Дуэль игрока '{0}' не найден. Проверьте введенные данные",
+                ["error_accepting_self"]               = "Нельзя принимать свои дуэли",
+                ["error_accepting_selfip"]             = "Найдено совпадение IP-адресов. Ваша команда отклонена",
+                ["error_accepting_min_balance"]        = "Не хватает BetCoins для создания ставки",
+                ["info_arenas_list_item"]              = "Арена: {0}. Статус: {1}",
+                ["info_arenas_list_title"]             = "Список доступных арен: ",
+                ["error_weapon_in_hand_dnt_exists"]    = "Для запуска арены возьмите оружие в руку",
+                ["info_duel_request_removed"]          = "Ваш запрос дуэли на арене: '{0}' удален из списка доступных дуэлей",
+                ["info_duel_training_started"]         = "Тренировка началась. Время тренировки: '{0}'",
+                ["info_duel_match_start"]              = "Бой начался. Длительнось боя: '{0}'",
+                ["info_duel_stop_force"]               = "Игрок: '{0}' покинул арену раньше установленного времени. Выигрыш Ваш, хоть и выиграли Вы нечестно :(",
             }, this);
         }
         #endregion
@@ -825,7 +841,7 @@ namespace Oxide.Plugins
         {
             if(IsArenaExists(part))
             {
-                return GetAllArenas().Where((x) => x.Contains(part)).First();
+                return GetAllArenas().Where((x) => x.ToLower().Contains(part.ToLower())).First();
             }
             else
             {
@@ -918,18 +934,6 @@ namespace Oxide.Plugins
         private void PreparePlayerForArena(BasePlayer player)
         {
             ClearInventory(player);
-        }
-        private string GetChoisedWeapon(BasePlayer player)
-        {
-            string weapon = player.GetActiveItem().name;
-            if(IsAllowedWeapon(weapon))
-            {
-                return weapon;
-            }
-            else
-            {
-                return String.Empty;
-            }
         }
         private void ClearInventory(BasePlayer player)
         {
@@ -1217,17 +1221,17 @@ namespace Oxide.Plugins
 
             if (m_Bets.Count <= 0)
             {
-                SendReply(player, "Доступных дуэлей нет");
+                SendReply(player, GetMessage("info_duel_list_empty", this));
             }
             else
             {
-                SendReply(player, "Доступные дуэли: ");
+                SendReply(player, GetMessage("info_duel_list_title", this));
                 foreach (var bet in m_Bets)
                 {
-                    SendReply(player, $"Игрок: {bet.Initiator.Name}, Ставка: {bet.Bet}, Арена: {bet.Arena}");
+                    SendReply(player, string.Format(GetMessage("info_duel_list_item", this), bet.Initiator.Name, bet.Bet, bet.Arena));
                 }
 
-                SendReply(player, "Для того чтобы принять дуэль введите /rdc.accept никигрока");
+                SendReply(player, GetMessage("info_duel_list_footer", this));
             }
         }
         [ChatCommand("rdc.accept")]
@@ -1236,7 +1240,7 @@ namespace Oxide.Plugins
             if (player == null) return;
             if (args.Length < 1)
             {
-                SendReply(player, "Не знаю такую команду. Нужно указывать имя инициатора дуэлей");
+                SendReply(player, GetMessage("error_command_rdcaccept_length", this));
 
                 return;
             }
@@ -1245,19 +1249,19 @@ namespace Oxide.Plugins
             DuelRequest request = GetRepository<DuelRequest>(initiatorId);
             if (request == null)
             {
-                SendReply(player, "Дуэль с таким инициатором не найден. Укажите корректное имя");
+                SendReply(player, string.Format(GetMessage("error_initiator_not_found", this), args[0]));
 
                 return;
             }
             if (request.Initiator.Id == player.UserIDString)
             {
-                SendReply(player, "Нельзя принимать свои же дуэли");
+                SendReply(player, GetMessage("error_accepting_self", this));
 
                 return;
             }
             if (IsSameIP(request.Initiator.Name, player.displayName))
             {
-                SendReply(player, $"Запрещено принимать дуэль с одного и тогоже компьютера");
+                SendReply(player, GetMessage("error_accepting_selfip", this));
 
                 return;
             }
@@ -1268,7 +1272,7 @@ namespace Oxide.Plugins
             }
             catch(BalanceException)
             {
-                SendReply(player, "У вас не хватает средств на балансе для совершения этого действия");
+                SendReply(player, GetMessage("error_accepting_min_balance", this));
             }
             finally
             {
@@ -1289,11 +1293,11 @@ namespace Oxide.Plugins
             List<string> availible = new List<string>();
             foreach(string arena in GetAllArenas())
             {
-                if (!IsArenaIsBuzy(arena)) availible.Add($"Арена: {arena}. Статус: <color=#00d219>доступна</color>"); 
-                else availible.Add($"Арена: {arena}. Статус: <color=#d20015>не доступна</color>"); ;
+                if (!IsArenaIsBuzy(arena)) availible.Add(string.Format(GetMessage("info_arenas_list_item", this), arena, "<color=#00d219>доступна</color>"));
+                else availible.Add(string.Format(GetMessage("info_arenas_list_item", this), arena, "<color=#d20015>не доступна</color>"));
             }
 
-            SendReply(player, "Список доступных арен: ");
+            SendReply(player, GetMessage("info_arenas_list_title", this));
             foreach (string arena in availible)
             {
                 SendReply(player, arena);
@@ -1337,14 +1341,14 @@ namespace Oxide.Plugins
             }
             if(data.Balance < bet)
             {
-                SendReply(player, $"Ваш баланс: {data.Balance}, а ставка: {bet}. Как вы думаете вы сможете создать такую ставку ?");
+                SendReply(player, GetMessage("error_accepting_min_balance", this));
 
                 return;
             }
             Item item = player.GetActiveItem() ?? null;
             if(item == null)
             {
-                SendReply(player, "Для запуска арены Вам требуется держать выбранное оружие в руке");
+                SendReply(player, GetMessage("error_weapon_in_hand_dnt_exists", this));
 
                 return;
             }
@@ -1352,7 +1356,7 @@ namespace Oxide.Plugins
             int[] weapon = GetWeaponData(item);
             if(weapon == null)
             {
-                SendReply(player, "Для запуска арены Вам требуется держать выбранное оружие в руке");
+                SendReply(player, GetMessage("error_weapon_in_hand_dnt_exists", this));
 
                 return;
             }
@@ -1377,7 +1381,7 @@ namespace Oxide.Plugins
             {
                 m_Bets.Remove(request);
 
-                SendReply(player, $"Ваш запрос на дуэль удален из списка");
+                SendReply(player, string.Format(GetMessage("info_duel_request_removed", this), request.Arena));
             }
         }
         #endregion
@@ -1486,8 +1490,8 @@ namespace Oxide.Plugins
                         Arena current = m_ActiveArenas.Where((x) => x.Id == arena.Id).First();
                         current.StartTraining(m_Config.TrainSeconds, () =>
                         {
-                            SendReply(FindPlayer(current.RedPlayer.Id), $"Тренировка началась и будет длиться {ToNormalTimeString(m_Config.TrainSeconds)}");
-                            SendReply(FindPlayer(current.BluePlayer.Id), $"Тренировка началась и будет длиться {ToNormalTimeString(m_Config.TrainSeconds)}");
+                            SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
+                            SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
                         }, () =>
                         {
                             current.DestroyTimers();
@@ -1504,8 +1508,8 @@ namespace Oxide.Plugins
                                 GiveChoisedWeapon(FindPlayer(current.BluePlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
                                 GiveChoisedWeapon(FindPlayer(current.RedPlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
 
-                                SendReply(FindPlayer(current.RedPlayer.Id), $"Бой начался и закончится через: {ToNormalTimeString(m_Config.MatchSeconds)}");
-                                SendReply(FindPlayer(current.BluePlayer.Id), $"Бой начался и закончится через: {ToNormalTimeString(m_Config.MatchSeconds)}");
+                                SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start ", this), ToNormalTimeString(m_Config.MatchSeconds)));
+                                SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start ", this), ToNormalTimeString(m_Config.MatchSeconds)));
                             }, () =>
                             {
                                 StopArena(current.RedPlayer);
@@ -1533,7 +1537,7 @@ namespace Oxide.Plugins
                         current.RedPlayer.OnVictory(current.Cash);
                         current.BluePlayer.OnLose(current.Cash);
 
-                        SendReply(FindPlayer(current.RedPlayer.Id), $"Синий игрок покинул арену раньше времени, Вы автоматически являетесь победителем");
+                        SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_stop_force", this), current.BluePlayer.Name));
                         SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), current.Id, current.CurrentArena, current.RedPlayer.Name, current.BluePlayer.Name));
                     }
                     else if (winner == Team.Blue)
@@ -1541,7 +1545,7 @@ namespace Oxide.Plugins
                         current.BluePlayer.OnVictory(current.Cash);
                         current.RedPlayer.OnLose(current.Cash);
 
-                        SendReply(FindPlayer(current.RedPlayer.Id), $"Красный игрок покинул арену раньше времени, Вы автоматически являетесь победителем");
+                        SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_stop_force", this), current.RedPlayer.Name));
                         SendGlobalMessage(string.Format(GetMessage("arena_stop_global_message_normal", this), current.Id, current.CurrentArena, current.BluePlayer.Name, current.RedPlayer.Name));
                     }
                     else
