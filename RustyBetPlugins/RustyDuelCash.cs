@@ -38,9 +38,9 @@ namespace Oxide.Plugins
     class RustyDuelCash : RustPlugin
     {
         #region Fields
-        private HashSet<DuelPlayer>                m_OnlinePlayers = new HashSet<DuelPlayer>();
-        private List<Arena>                        m_ActiveArenas  = new List<Arena>();
-        private List<DuelRequest>                  m_Bets          = new List<DuelRequest>();
+        private static HashSet<DuelPlayer>                m_OnlinePlayers = new HashSet<DuelPlayer>();
+        private static List<Arena>                        m_ActiveArenas  = new List<Arena>();
+        private static List<DuelRequest>                  m_Bets          = new List<DuelRequest>();
 
         public RustyDuelCashConfig m_Config;
         #endregion
@@ -281,17 +281,6 @@ namespace Oxide.Plugins
             {
                 OldItems = null;
             }
-
-            //public static bool operator ==(DuelPlayer p1, DuelPlayer p2)
-            //{
-            //    if (p1.Id == p2.Id) return true;
-            //    else return false;
-            //}
-            //public static bool operator !=(DuelPlayer p1, DuelPlayer p2)
-            //{
-            //    if (p1.Id != p2.Id) return true;
-            //    else return false;
-            //}
             public override int GetHashCode()
             {
                 return base.GetHashCode();
@@ -801,7 +790,7 @@ namespace Oxide.Plugins
         }
         private bool IsDeserter(BasePlayer player)
         {
-            return GetCommonDuelData(player).Deserter.IsDeserter;
+            return GetRepository<DuelPlayer>(player.UserIDString).Deserter.IsDeserter;
         }
         private bool IsAlreadyRequested(BasePlayer player)
         {
@@ -811,7 +800,7 @@ namespace Oxide.Plugins
         {
             return m_Config.AllowedWeaponList.Any((x) => x.Contains(prefab));
         }
-        private T GetRepository<T>(string playerId) where T : class
+        private static T GetRepository<T>(string playerId) where T : class
         {
             if(typeof(T) == typeof(DuelPlayer))
             {
@@ -859,55 +848,6 @@ namespace Oxide.Plugins
                 return (T)(object)null;
             }
         }
-        private void OnSpawn(BasePlayer player)
-        {
-            TeleportHelper.TeleportToPoint(player, GetArenaStorage(player).Spawns.GetRandom(GetCommonDuelData(player).CurrentTeam));
-        }
-        private DuelPlayer GetCommonDuelData(BasePlayer player)
-        {
-            if (!m_OnlinePlayers.Any((x) => x.Id == player.UserIDString))
-            {
-                throw new DuelCoreException($"Player: '{player.UserIDString}' not found in online players. Check your code or load function");
-            }
-
-            DuelPlayer obj = m_OnlinePlayers.Where((x) => x.Id == player.UserIDString)?.First();
-            if (obj == null) throw new DuelCoreException($"Incorrect error with getting duel player object for '{player.UserIDString}'");
-            else
-            {
-                return obj;
-            }
-        }
-        private Arena GetArenaStorage(BasePlayer player)
-        {
-            if(m_ActiveArenas.Any((x) => x.RedPlayer.Id == player.UserIDString))
-            {
-                Arena arena = m_ActiveArenas.Where((x) => x.RedPlayer.Id == player.UserIDString).FirstOrDefault();
-                if(arena == null)
-                {
-                    throw new DuelCoreException($"Incorrect data for '{player.UserIDString}([Red] player)' arena member");
-                }
-                else
-                {
-                    return arena;
-                }
-            }
-            else if(m_ActiveArenas.Any((x) => x.BluePlayer.Id == player.UserIDString))
-            {
-                Arena arena = m_ActiveArenas.Where((x) => x.BluePlayer.Id == player.UserIDString).FirstOrDefault();
-                if (arena == null)
-                {
-                    throw new DuelCoreException($"Incorrect data for '{player.UserIDString}([Blue] player)' arena member");
-                }
-                else
-                {
-                    return arena;
-                }
-            }
-            else
-            {
-                return null;
-            }
-        }
         private void PreparePlayerForArena(BasePlayer player)
         {
             ClearInventory(player);
@@ -931,7 +871,7 @@ namespace Oxide.Plugins
         private void SaveAllContainers(BasePlayer player)
         {
             Dictionary<Container, ItemContainer> items = new Dictionary<Container, ItemContainer>();
-            DuelPlayer data = GetCommonDuelData(player);
+            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
 
             if (player.inventory.containerBelt.itemList.Count > 0)
             {
@@ -956,7 +896,7 @@ namespace Oxide.Plugins
         private void RestoreAllContainers(BasePlayer player)
         {
             ItemContainer[] containers = new ItemContainer[3];
-            DuelPlayer data = GetCommonDuelData(player);
+            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
             Array containerValues = Enum.GetValues(typeof(Container));
 
             for (int i = 0; i < containerValues.Length; i++)
@@ -1072,7 +1012,73 @@ namespace Oxide.Plugins
         }
         void OnPlayerDisconnected(BasePlayer player, string reason)
         {
-            SavePlayer(player);
+            if (player == null) return;
+            if (!IsArenaMember(player))
+            {
+                SavePlayer(player);
+            }
+            else
+            {
+                DuelPlayer playerChild = GetRepository<DuelPlayer>(player.UserIDString);
+                if (playerChild == null) return;
+
+                if(playerChild.CurrentTeam == Team.Red)
+                {
+                    StopArena(playerChild, Team.Blue);
+                }
+                else
+                {
+                    StopArena(playerChild, Team.Red);
+                }
+
+                SavePlayer(player);
+            }
+        }
+        void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
+        {
+            BasePlayer victimParent = entity?.ToPlayer() ?? null;
+            BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
+            if (victimParent == null || attackerParent == null) return;
+            if (!IsArenaMember(victimParent) && !IsArenaMember(attackerParent)) return;
+
+            DuelPlayer victim = GetRepository<DuelPlayer>(victimParent.UserIDString);
+            DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
+            if (victim == null || attacker == null) return;
+
+            victim.OnDie();
+            attacker.OnWin();
+
+            ClearInventory(victimParent);
+            ClearInventory(attackerParent);
+
+            /*
+             * TODO:
+             * -> Refresh Counters GUI
+             */
+        }
+        void OnPlayerRespawned(BasePlayer player)
+        {
+            if (player == null) return;
+            if (!IsArenaMember(player))
+            {
+                /*
+                 * TODO:
+                 * -> player.Teleport(m_Config.LobbyCoordinates.GetRandom());
+                 */
+
+                return;
+            }
+
+            Arena arena = GetRepository<Arena>(player.UserIDString);
+            if (arena == null) return;
+
+            arena.RespawnMembers();
+
+            ClearInventory(FindPlayer(arena.RedPlayer.Id));
+            ClearInventory(FindPlayer(arena.BluePlayer.Id));
+
+            GiveChoisedWeapon(FindPlayer(arena.RedPlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
+            GiveChoisedWeapon(FindPlayer(arena.BluePlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
         }
         #endregion
 
@@ -1169,23 +1175,22 @@ namespace Oxide.Plugins
 
                 return;
             }
+            if (request.Initiator.Id == player.UserIDString)
+            {
+                SendReply(player, "Нельзя принимать свои же дуэли");
 
-            //if (request.Initiator.Id == player.UserIDString)
-            //{
-            //    SendReply(player, "Нельзя принимать свои же дуэли");
+                return;
+            }
+            if (IsSameIP(request.Initiator.Name, player.displayName))
+            {
+                SendReply(player, $"Запрещено принимать дуэль с одного и тогоже компьютера");
 
-            //    return;
-            //}
-            //if (IsSameIP(request.Initiator.Name, player.displayName))
-            //{
-            //    SendReply(player, $"Запрещено принимать дуэль с одного и тогоже компьютера");
-
-            //    return;
-            //}
+                return;
+            }
 
             try
             {
-                request.OnResponse(GetCommonDuelData(player));
+                request.OnResponse(GetRepository<DuelPlayer>(player.UserIDString));
             }
             catch(BalanceException)
             {
@@ -1249,8 +1254,8 @@ namespace Oxide.Plugins
         #region Duel Instruments
         private void CreateDuelRequest(BasePlayer player, int bet, string arena = "Случайно")
         {
-            DuelPlayer data = GetCommonDuelData(player);
-            if(data == null)
+            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
+            if (data == null)
             {
                 SendReply(player, GetMessage("error_you_dnt_exists_in_database", this));
 
