@@ -1116,10 +1116,13 @@ namespace Oxide.Plugins
             BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
             if (attackerParent != null)
             {
-                DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
-                attacker.OnWin();
+                if (IsArenaMember(attackerParent))
+                {
+                    DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
+                    attacker.OnWin();
 
-                ClearInventory(attackerParent);
+                    ClearInventory(attackerParent);
+                }
             }
 
             /*
