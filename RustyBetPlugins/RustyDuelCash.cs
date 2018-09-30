@@ -1104,19 +1104,23 @@ namespace Oxide.Plugins
         void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
         {
             BasePlayer victimParent = entity?.ToPlayer() ?? null;
-            BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
-            if (victimParent == null || attackerParent == null) return;
-            if (!IsArenaMember(victimParent) && !IsArenaMember(attackerParent)) return;
+            if (victimParent == null) return;
+            if (!IsArenaMember(victimParent)) return;
 
             DuelPlayer victim = GetRepository<DuelPlayer>(victimParent.UserIDString);
-            DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
-            if (victim == null || attacker == null) return;
+            if (victim == null) return;
 
             victim.OnDie();
-            attacker.OnWin();
-
             ClearInventory(victimParent);
-            ClearInventory(attackerParent);
+
+            BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
+            if (attackerParent != null)
+            {
+                DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
+                attacker.OnWin();
+
+                ClearInventory(attackerParent);
+            }
 
             /*
              * TODO:
