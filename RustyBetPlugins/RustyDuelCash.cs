@@ -102,7 +102,7 @@ namespace Oxide.Plugins
             public Vector3      OldPoint    { get; set; }
             public Team         CurrentTeam { get; set; }
 
-            private Dictionary<Container, ItemContainer>   OldItems    { get; set; }
+            private List<Item>   OldItems    { get; set; }
 
             public DuelPlayer() : this(INCORRECT_ID, INCORRECT_NAME, -1, -1, -1) { }
             public DuelPlayer(string id, string name, int bal, int wins, int dies)
@@ -262,20 +262,16 @@ namespace Oxide.Plugins
                 if (Deserter == null) Deserter = new DeserterInfo();
                 Deserter.Instaintiate(reason, from, timer, secs, Deserter.Destroy, init);
             }
-            public void SetItems(Dictionary<Container, ItemContainer> items)
+            public void AddItem(Item item)
             {
-                OldItems = items;
+                if (OldItems == null) OldItems = new List<Item>();
+                if (OldItems.Any((x) => x.info.itemid == item.info.itemid)) return;
+
+                OldItems.Add(item);
             }
-            public ItemContainer GetContainer(Container type)
+            public List<Item> GetItems()
             {
-                if(OldItems.ContainsKey(type))
-                {
-                    return OldItems[type];
-                }
-                else
-                {
-                    return null;
-                }
+                return OldItems;
             }
             public void DestroyItems()
             {
@@ -740,7 +736,7 @@ namespace Oxide.Plugins
 
             if(m_OnlinePlayers.Any((x) => x.Id == target.Id))
             {
-                PrintError($"Duplicate items: '{target.Id}' in online players hashset. Old data deleted");
+                PrintWarning($"Duplicate items: '{target.Id}' in online players hashset. Old data deleted");
                 m_OnlinePlayers.Remove(target);
             }
 
@@ -752,6 +748,8 @@ namespace Oxide.Plugins
             {
                 SavePlayer(player, true);
             }
+
+            m_OnlinePlayers.Clear();
         }
         public void SavePlayer(BasePlayer player, bool all = false)
         {
@@ -759,10 +757,19 @@ namespace Oxide.Plugins
             if(saveable != null)
             {
                 saveable.Destroy();
-
                 Interface.Oxide.DataFileSystem.WriteObject($"{Title}\\{player.UserIDString}", saveable);
 
-                if (!all) m_OnlinePlayers.Remove(saveable);
+                if (!all)
+                {
+                    if(m_OnlinePlayers.Contains(saveable))
+                    {
+                        m_OnlinePlayers.Remove(saveable);
+                    }
+                    else
+                    {
+                        PrintWarning($"Don't founded: {saveable.Id}");
+                    }
+                }
             }
             else
             {
@@ -861,7 +868,7 @@ namespace Oxide.Plugins
         }
         private bool IsArenaExists(string arena)
         {
-            return GetAllArenas().Any((x) => x.Contains(arena));
+            return GetAllArenas().Any((x) => x.ToLower().Contains(arena.ToLower()));
         }
         private bool IsArenaIsBuzy(string arena)
         {
@@ -931,73 +938,45 @@ namespace Oxide.Plugins
                 return (T)(object)null;
             }
         }
-        private void PreparePlayerForArena(BasePlayer player)
+        private void ClearInventory(BasePlayer player, bool save)
         {
-            ClearInventory(player);
+            if(save)
+                SaveAllContainers(player);
+
+            DeleteAllItems(player);
         }
-        private void ClearInventory(BasePlayer player)
+        private void DeleteAllItems(BasePlayer player)
         {
-            SaveAllContainers(player);
+            player.inventory.containerBelt.Clear();
+            player.inventory.containerMain.Clear();
+            player.inventory.containerWear.Clear();
         }
         private void SaveAllContainers(BasePlayer player)
         {
-            Dictionary<Container, ItemContainer> items = new Dictionary<Container, ItemContainer>();
             DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
+            data.DestroyItems();
 
-            if (player.inventory.containerBelt.itemList.Count > 0)
+            if (player.inventory.AllItems().Count() > 0)
             {
-                items.Add(Container.Belt, player.inventory.containerBelt);
-                player.inventory.containerBelt.Clear();
+                foreach(var item in player.inventory.AllItems())
+                {
+                    data.AddItem(ItemManager.CreateByItemID(item.info.itemid, item.amount)); // <- Самый жесткий в мире костыль :D
+                }
             }
-
-            if (player.inventory.containerMain.itemList.Count > 0)
-            {
-                items.Add(Container.Main, player.inventory.containerMain);
-                player.inventory.containerMain.Clear();
-            }
-
-            if (player.inventory.containerWear.itemList.Count > 0)
-            {
-                items.Add(Container.Wear, player.inventory.containerWear);
-                player.inventory.containerWear.Clear();
-            }
-
-            data.SetItems(items);
         }
         private void RestoreAllContainers(BasePlayer player)
         {
-            ItemContainer[] containers = new ItemContainer[3];
-            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
-            Array containerValues = Enum.GetValues(typeof(Container));
+            List<Item> items = GetRepository<DuelPlayer>(player.UserIDString).GetItems();
 
-            for (int i = 0; i < containerValues.Length; i++)
+            if(items != null && items.Count > 0)
             {
-                if(data.GetContainer((Container)containerValues.GetValue(i)) != null)
+                foreach(var item in items)
                 {
-                    if ((Container)containerValues.GetValue(i) == Container.Belt)
-                    {
-                        foreach (var item in data.GetContainer((Container)containerValues.GetValue(i)).itemList)
-                        {
-                            item.MoveToContainer(player.inventory.containerBelt);
-                        }
-                    }
-                    else if ((Container)containerValues.GetValue(i) == Container.Main)
-                    {
-                        foreach (var item in data.GetContainer((Container)containerValues.GetValue(i)).itemList)
-                        {
-                            item.MoveToContainer(player.inventory.containerMain);
-                        }
-                    }
-                    else if ((Container)containerValues.GetValue(i) == Container.Wear)
-                    {
-                        foreach (var item in data.GetContainer((Container)containerValues.GetValue(i)).itemList)
-                        {
-                            item.MoveToContainer(player.inventory.containerWear);
-                        }
-                    }
-                    else continue;
+                    player.GiveItem(item);
                 }
             }
+
+            GetRepository<DuelPlayer>(player.UserIDString).DestroyItems();
         }
         private bool IsSameIP(string username, string targetname)
         {
@@ -1115,7 +1094,7 @@ namespace Oxide.Plugins
             if (victim == null) return;
 
             victim.OnDie();
-            ClearInventory(victimParent);
+            ClearInventory(victimParent, false);
 
             BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
             if (attackerParent != null)
@@ -1125,7 +1104,7 @@ namespace Oxide.Plugins
                     DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
                     attacker.OnWin();
 
-                    ClearInventory(attackerParent);
+                    ClearInventory(attackerParent, false);
                 }
             }
 
@@ -1152,8 +1131,8 @@ namespace Oxide.Plugins
 
             arena.RespawnMembers();
 
-            ClearInventory(FindPlayer(arena.RedPlayer.Id));
-            ClearInventory(FindPlayer(arena.BluePlayer.Id));
+            ClearInventory(FindPlayer(arena.RedPlayer.Id), false);
+            ClearInventory(FindPlayer(arena.BluePlayer.Id), false);
 
             GiveChoisedWeapon(FindPlayer(arena.RedPlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
             GiveChoisedWeapon(FindPlayer(arena.BluePlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
@@ -1278,9 +1257,6 @@ namespace Oxide.Plugins
             {
                 request.Initiator.OnAccepted();
                 request.Responser.OnAccepted();
-
-                PreparePlayerForArena(FindPlayer(request.Initiator.Id));
-                PreparePlayerForArena(FindPlayer(request.Responser.Id));
 
                 InitializeArena(request);
             }
@@ -1467,6 +1443,8 @@ namespace Oxide.Plugins
                 arena.InitializeWeapon(request.Weapon, request.Ammo);
                 m_ActiveArenas.Add(arena);
 
+                ClearInventory(FindPlayer(request.Initiator.Id), true);
+                ClearInventory(FindPlayer(request.Responser.Id), true);
 
                 SendReply(FindPlayer(request.Initiator.Id), string.Format(GetMessage("arena_ready_to_teleport", this), m_Config.TimeToTeleportOnArena));
                 SendReply(FindPlayer(request.Responser.Id), string.Format(GetMessage("arena_ready_to_teleport", this), m_Config.TimeToTeleportOnArena));
@@ -1500,16 +1478,16 @@ namespace Oxide.Plugins
                             HealPlayer(FindPlayer(current.BluePlayer.Id));
                             HealPlayer(FindPlayer(current.RedPlayer.Id));
 
-                            ClearInventory(FindPlayer(current.BluePlayer.Id));
-                            ClearInventory(FindPlayer(current.RedPlayer.Id));
+                            ClearInventory(FindPlayer(current.BluePlayer.Id), false);
+                            ClearInventory(FindPlayer(current.RedPlayer.Id), false);
 
                             current.StartBattle(m_Config.MatchSeconds, () =>
                             {
                                 GiveChoisedWeapon(FindPlayer(current.BluePlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
                                 GiveChoisedWeapon(FindPlayer(current.RedPlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
 
-                                SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start ", this), ToNormalTimeString(m_Config.MatchSeconds)));
-                                SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start ", this), ToNormalTimeString(m_Config.MatchSeconds)));
+                                SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
+                                SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
                             }, () =>
                             {
                                 StopArena(current.RedPlayer);
@@ -1592,6 +1570,9 @@ namespace Oxide.Plugins
                     current.Kick(current.RedPlayer);
                     current.Kick(current.BluePlayer);
                 }
+
+                ClearInventory(FindPlayer(current.RedPlayer.Id), false);
+                ClearInventory(FindPlayer(current.BluePlayer.Id), false);
 
                 RestoreAllContainers(FindPlayer(current.RedPlayer.Id));
                 RestoreAllContainers(FindPlayer(current.BluePlayer.Id));
