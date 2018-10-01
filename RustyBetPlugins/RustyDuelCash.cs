@@ -53,6 +53,13 @@ namespace Oxide.Plugins
             Multiple,
             Split
         }
+        public enum Phases
+        {
+            None,
+            Wait,
+            Train,
+            Battle
+        }
         public class DeserterInfo
         {
             public bool           IsDeserter { get; set; }
@@ -83,24 +90,26 @@ namespace Oxide.Plugins
             Main,
             Wear
         }
-        public class DuelPlayer
+        public class BaseRepository { }
+        public class DuelPlayer : BaseRepository
         {
             public const string INCORRECT_ID   = "-1";
             public const string INCORRECT_NAME = "Unknown";
 
-            public string       Id          { get; set; }
-            public string       Name        { get; set; }
-            public int          Balance     { get; set; }
-            public int          TotalWins   { get; set; }
-            public int          TotalDies   { get; set; }
-            public int          CurrentWins { get; set; }
-            public int          CurrentDies { get; set; }
-            public int          Rating      { get; set; }
-            public int          Victories   { get; set; }
-            public int          Loses       { get; set; }
-            public DeserterInfo Deserter    { get; set; }
-            public Vector3      OldPoint    { get; set; }
-            public Team         CurrentTeam { get; set; }
+            public string       Id           { get; set; }
+            public string       Name         { get; set; }
+            public int          Balance      { get; set; }
+            public int          TotalWins    { get; set; }
+            public int          TotalDies    { get; set; }
+            public int          CurrentWins  { get; set; }
+            public int          CurrentDies  { get; set; }
+            public int          Rating       { get; set; }
+            public int          Victories    { get; set; }
+            public int          Loses        { get; set; }
+            public DeserterInfo Deserter     { get; set; }
+            public Vector3      OldPoint     { get; set; }
+            public Team         CurrentTeam  { get; set; }
+            public Phases       CurrentPhase { get; set; }
 
             private List<Item>   OldItems    { get; set; }
 
@@ -290,7 +299,7 @@ namespace Oxide.Plugins
                 return $"{Id}:{Name}:{Balance}:{Victories}:{Loses}";
             }
         }
-        public class DuelRequest
+        public class DuelRequest : BaseRepository
         {
             public DuelPlayer Initiator { get; set; }
             public DuelPlayer Responser { get; set; }
@@ -314,9 +323,12 @@ namespace Oxide.Plugins
 
                 Initiator.CalculateBalance(BalanceAction.Subtract, Bet);
                 Responser.CalculateBalance(BalanceAction.Subtract, Bet);
+
+                Initiator.CurrentPhase = Phases.Wait;
+                resp.CurrentPhase = Phases.Wait;
             }
         }
-        public class Arena
+        public class Arena : BaseRepository
         {
             public int              Id            { get; set; }
             public string           CurrentArena  { get; set; }
@@ -329,7 +341,7 @@ namespace Oxide.Plugins
             public int              CurrentWeapon { get; set; }
             public int              CurrentAmmo   { get; set; }
 
-            private PluginTimers  m_tInstance  { get; set; }
+            private PluginTimers  m_TimerInstance  { get; set; }
 
             public Arena(int id, ArenaPoints corners, DuelPlayer red, DuelPlayer blue, PluginTimers timer, int everyCash)
             {
@@ -337,7 +349,7 @@ namespace Oxide.Plugins
                 Corners      = corners;
                 RedPlayer    = red;
                 BluePlayer   = blue;
-                m_tInstance  = timer;
+                m_TimerInstance  = timer;
 
                 Cash         = everyCash * 2;
 
@@ -363,7 +375,7 @@ namespace Oxide.Plugins
             }
             private void Start(int secs, Action init, Action callback)
             {
-                CurrentTimer.Instantiate(m_tInstance, secs, callback, init);
+                CurrentTimer.Instantiate(m_TimerInstance, secs, callback, init);
             }
             public void DestroyTimers()
             {
@@ -387,25 +399,6 @@ namespace Oxide.Plugins
                 Kick(BluePlayer);
             }
         }
-
-        //TODO: Future for <cfg>
-        public class ArenaInfo
-        {
-            public string   Name            { get; set; }
-            public string   CenterPosition  { get; set; }
-            public string[] RedSpawnPoints  { get; set; }
-            public string[] BlueSpawnPoints { get; set; }
-
-            public ArenaInfo() : this("", "", null, null) { }
-            public ArenaInfo(string name, string center, string[] red, string[] blue)
-            {
-                Name            = name;
-                CenterPosition  = center;
-                RedSpawnPoints  = red;
-                BlueSpawnPoints = blue;
-            }
-        }
-
         public class ArenaPoints
         {
             public Vector3 CenterDot   { get; set; }
@@ -753,7 +746,7 @@ namespace Oxide.Plugins
         }
         public void SavePlayer(BasePlayer player, bool all = false)
         {
-            DuelPlayer saveable = GetRepository<DuelPlayer>(player.UserIDString);
+            DuelPlayer saveable = GetRepositoryOfType<DuelPlayer>(player.UserIDString);
             if(saveable != null)
             {
                 saveable.Destroy();
@@ -880,17 +873,17 @@ namespace Oxide.Plugins
         }
         private bool IsDeserter(BasePlayer player)
         {
-            return GetRepository<DuelPlayer>(player.UserIDString).Deserter.IsDeserter;
+            return GetRepositoryOfType<DuelPlayer>(player.UserIDString).Deserter.IsDeserter;
         }
         private bool IsAlreadyRequested(BasePlayer player)
         {
-            return GetRepository<DuelRequest>(player.UserIDString) != null ? true : false;
+            return GetRepositoryOfType<DuelRequest>(player.UserIDString) != null ? true : false;
         }
         private bool IsAllowedWeapon(string prefab)
         {
             return m_Config.AllowedWeaponList.Any((x) => x.Contains(prefab));
         }
-        private static T GetRepository<T>(string playerId) where T : class
+        private static T GetRepositoryOfType<T>(string playerId) where T : BaseRepository
         {
             if(typeof(T) == typeof(DuelPlayer))
             {
@@ -938,6 +931,42 @@ namespace Oxide.Plugins
                 return (T)(object)null;
             }
         }
+        private static List<T> GetAllRepositoriesOfType<T>() where T : BaseRepository
+        {
+            List<T> list = new List<T>();
+
+            if(typeof(T) == typeof(DuelPlayer))
+            {
+                foreach(var player in m_OnlinePlayers)
+                {
+                    list.Add((T)(object)player);
+                }
+            }
+            else if(typeof(T) == typeof(DuelRequest))
+            {
+                foreach(var request in m_Bets)
+                {
+                    list.Add((T)(object)request);
+                }
+            }
+            else if(typeof(T) == typeof(Arena))
+            {
+                foreach(var arena in m_ActiveArenas)
+                {
+                    list.Add((T)(object)arena);
+                }
+            }
+            else { }
+
+            if(list.Count > 0)
+            {
+                return list;
+            }
+            else
+            {
+                return null;
+            }
+        }
         private void ClearInventory(BasePlayer player, bool save)
         {
             if(save)
@@ -953,7 +982,7 @@ namespace Oxide.Plugins
         }
         private void SaveAllContainers(BasePlayer player)
         {
-            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
+            DuelPlayer data = GetRepositoryOfType<DuelPlayer>(player.UserIDString);
             data.DestroyItems();
 
             if (player.inventory.AllItems().Count() > 0)
@@ -966,7 +995,7 @@ namespace Oxide.Plugins
         }
         private void RestoreAllContainers(BasePlayer player)
         {
-            List<Item> items = GetRepository<DuelPlayer>(player.UserIDString).GetItems();
+            List<Item> items = GetRepositoryOfType<DuelPlayer>(player.UserIDString).GetItems();
 
             if(items != null && items.Count > 0)
             {
@@ -976,7 +1005,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            GetRepository<DuelPlayer>(player.UserIDString).DestroyItems();
+            GetRepositoryOfType<DuelPlayer>(player.UserIDString).DestroyItems();
         }
         private bool IsSameIP(string username, string targetname)
         {
@@ -1069,7 +1098,7 @@ namespace Oxide.Plugins
             }
             else
             {
-                DuelPlayer playerChild = GetRepository<DuelPlayer>(player.UserIDString);
+                DuelPlayer playerChild = GetRepositoryOfType<DuelPlayer>(player.UserIDString);
                 if (playerChild == null) return;
 
                 if(playerChild.CurrentTeam == Team.Red)
@@ -1090,10 +1119,11 @@ namespace Oxide.Plugins
             if (victimParent == null) return;
             if (!IsArenaMember(victimParent)) return;
 
-            DuelPlayer victim = GetRepository<DuelPlayer>(victimParent.UserIDString);
+            DuelPlayer victim = GetRepositoryOfType<DuelPlayer>(victimParent.UserIDString);
             if (victim == null) return;
 
-            victim.OnDie();
+            if(victim.CurrentPhase == Phases.Battle) victim.OnDie();
+
             ClearInventory(victimParent, false);
 
             BasePlayer attackerParent = info?.InitiatorPlayer ?? null;
@@ -1101,8 +1131,8 @@ namespace Oxide.Plugins
             {
                 if (IsArenaMember(attackerParent))
                 {
-                    DuelPlayer attacker = GetRepository<DuelPlayer>(attackerParent.UserIDString);
-                    attacker.OnWin();
+                    DuelPlayer attacker = GetRepositoryOfType<DuelPlayer>(attackerParent.UserIDString);
+                    if (attacker.CurrentPhase == Phases.Battle) attacker.OnWin();
 
                     ClearInventory(attackerParent, false);
                 }
@@ -1126,7 +1156,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            Arena arena = GetRepository<Arena>(player.UserIDString);
+            Arena arena = GetRepositoryOfType<Arena>(player.UserIDString);
             if (arena == null) return;
 
             arena.RespawnMembers();
@@ -1136,6 +1166,9 @@ namespace Oxide.Plugins
 
             GiveChoisedWeapon(FindPlayer(arena.RedPlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
             GiveChoisedWeapon(FindPlayer(arena.BluePlayer.Id), arena.CurrentWeapon, arena.CurrentAmmo);
+
+            HealPlayer(FindPlayer(arena.BluePlayer.Id));
+            HealPlayer(FindPlayer(arena.RedPlayer.Id));
         }
         #endregion
 
@@ -1225,7 +1258,7 @@ namespace Oxide.Plugins
             }
             string initiatorId = FindPlayer(args[0])?.UserIDString ?? string.Empty;
 
-            DuelRequest request = GetRepository<DuelRequest>(initiatorId);
+            DuelRequest request = GetRepositoryOfType<DuelRequest>(initiatorId);
             if (request == null)
             {
                 SendReply(player, string.Format(GetMessage("error_initiator_not_found", this), args[0]));
@@ -1247,7 +1280,7 @@ namespace Oxide.Plugins
 
             try
             {
-                request.OnResponse(GetRepository<DuelPlayer>(player.UserIDString));
+                request.OnResponse(GetRepositoryOfType<DuelPlayer>(player.UserIDString));
             }
             catch(BalanceException)
             {
@@ -1293,14 +1326,14 @@ namespace Oxide.Plugins
             if (player == null) return;
             if (!IsArenaMember(player)) return;
 
-            Arena arena = GetRepository<Arena>(player.UserIDString);
+            Arena arena = GetRepositoryOfType<Arena>(player.UserIDString);
             if(arena.RedPlayer.Id == player.UserIDString)
             {
-                StopArena(GetRepository<DuelPlayer>(player.UserIDString), Team.Blue);
+                StopArena(GetRepositoryOfType<DuelPlayer>(player.UserIDString), Team.Blue);
             }
             else
             {
-                StopArena(GetRepository<DuelPlayer>(player.UserIDString), Team.Red);
+                StopArena(GetRepositoryOfType<DuelPlayer>(player.UserIDString), Team.Red);
             }
         }
         #endregion
@@ -1308,7 +1341,7 @@ namespace Oxide.Plugins
         #region Duel Instruments
         private void CreateDuelRequest(BasePlayer player, int bet, string arena = "Случайно")
         {
-            DuelPlayer data = GetRepository<DuelPlayer>(player.UserIDString);
+            DuelPlayer data = GetRepositoryOfType<DuelPlayer>(player.UserIDString);
             if (data == null)
             {
                 SendReply(player, GetMessage("error_you_dnt_exists_in_database", this));
@@ -1352,7 +1385,7 @@ namespace Oxide.Plugins
         }
         private void CancelDuelRequest(BasePlayer player)
         {
-            DuelRequest request = GetRepository<DuelRequest>(player.UserIDString);
+            DuelRequest request = GetRepositoryOfType<DuelRequest>(player.UserIDString);
             if(m_Bets.Contains(request))
             {
                 m_Bets.Remove(request);
@@ -1470,6 +1503,10 @@ namespace Oxide.Plugins
                         {
                             SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
                             SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
+
+                            request.Initiator.CurrentPhase = Phases.Train;
+                            request.Responser.CurrentPhase = Phases.Train;
+
                         }, () =>
                         {
                             current.DestroyTimers();
@@ -1488,6 +1525,9 @@ namespace Oxide.Plugins
 
                                 SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
                                 SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
+
+                                request.Initiator.CurrentPhase = Phases.Battle;
+                                request.Responser.CurrentPhase = Phases.Battle;
                             }, () =>
                             {
                                 StopArena(current.RedPlayer);
@@ -1504,9 +1544,9 @@ namespace Oxide.Plugins
         }
         public void StopArena(DuelPlayer redOrBluePlayer, Team winner = Team.None)
         {
-            if(m_ActiveArenas.Any((x) => x.RedPlayer == redOrBluePlayer))
+            if(m_ActiveArenas.Any((x) => x.RedPlayer == redOrBluePlayer) || m_ActiveArenas.Any((x) => x.BluePlayer == redOrBluePlayer))
             {
-                Arena current = GetRepository<Arena>(redOrBluePlayer.Id);
+                Arena current = GetRepositoryOfType<Arena>(redOrBluePlayer.Id);
 
                 if (winner != Team.None)
                 {
@@ -1577,7 +1617,10 @@ namespace Oxide.Plugins
                 RestoreAllContainers(FindPlayer(current.RedPlayer.Id));
                 RestoreAllContainers(FindPlayer(current.BluePlayer.Id));
 
-                if(m_ActiveArenas.Contains(current))
+                current.BluePlayer.CurrentPhase = Phases.None;
+                current.RedPlayer.CurrentPhase  = Phases.None;
+
+                if (m_ActiveArenas.Contains(current))
                 {
                     m_ActiveArenas.Remove(current);
                 }
