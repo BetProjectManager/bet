@@ -611,6 +611,7 @@ namespace Oxide.Plugins
                     {
                         "<color=#109586FF>Аптечки</color> разбросаны по площади всей арены. Если Ваш уровень здоровья упал слишком низко, то они смогут Вам помочь",
                         "<color=#7B0C81FF>Быстрая реакция</color> и <color=#7B0C81FF>хорошая координация</color> - два основных Ваших преимущества",
+                        "<color=#109586FF>Запоминайте арены</color>. Запомните каждую норку, кустик, камешек или бугорок - это поможет Вам стать лучше"
                     },
                     RedSpawnCoordinates    = new Dictionary<string, string[]>()
                     {
@@ -696,7 +697,7 @@ namespace Oxide.Plugins
                     },
                     AllowedWeaponList      = new List<string>()
                     {
-                        "ak.rifle",
+                        "rifle.ak",
                         "smg.thompson"
                     },
                 };
@@ -795,7 +796,7 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>()
             {
-                ["arena_ready_to_teleport"]            = "Вы будете телепортированы на арену через {0} секунд",
+                ["arena_ready_to_teleport"]            = "Ваша заявка принята. Приготовьтесь! Вы будете тепортированы через несколько секунд",
                 ["arena_not_found"]                    = "Указанная Вами арена не найдена или не доступна",
                 ["arena_stop_you_losed"]               = "Вы проиграли игроку '{0}'. Скоро Вы будете возвращены домой",
                 ["arena_stop_you_win"]                 = "Вы выиграли игрока '{0}'. Скоро вы будете возвращены домой",
@@ -1234,7 +1235,6 @@ namespace Oxide.Plugins
                     }
                 });
             }
-
             public static void CreateInput(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, bool password, int charLimit, TextAnchor align = TextAnchor.MiddleCenter)
             {
                 container.Add(new CuiElement
@@ -1248,7 +1248,6 @@ namespace Oxide.Plugins
                     }
                 });
             }
-
             public static void CreatePanel(ref CuiElementContainer container, string panel, string color, string aMin, string aMax, bool cursor = false)
             {
                 container.Add(new CuiPanel
@@ -1259,7 +1258,6 @@ namespace Oxide.Plugins
                 },
                 panel);
             }
-
             public static void CreateText(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, TextAnchor align = TextAnchor.MiddleCenter)
             {
                 container.Add(new CuiLabel
@@ -1269,7 +1267,6 @@ namespace Oxide.Plugins
                 },
                 panel);
             }
-
             public static void CreateButton(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, TextAnchor align = TextAnchor.MiddleCenter)
             {
                 container.Add(new CuiButton
@@ -1297,16 +1294,23 @@ namespace Oxide.Plugins
 
         public void ShowTrainingTitle(BasePlayer player, int secs)
         {
-            CuiElementContainer container = UI.CreateElementContainer("Arena_TrainingTitle", "1 1 1 0", "0.25 0.7929688", "0.7148438 0.9231771");
-            UI.CreatePanel(ref container, "Arena_TrainingTitle", "1 1 1 0", "0.25 0.7929688", "0.7148438 0.9231771");
-            UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", "Тренировка: ", 32, "0.1155462 0.5599999", "0.8865545 0.9900001");
+            CuiElementContainer container = UI.CreateElementContainer("Arena_TrainingTitle", "0 0 0 0.454902", "0.3955078 0.8658854", "0.5673828 0.9231771");
+            UI.CreateText(ref container, "Arena_TrainingTitle", "0.9215686 0.09019608 0.09019608 0.9843137", "Тренировка: ", 32, "-1.192093E-07 0.02272689", "1.005682 1");
+
+            CuiHelper.AddUi(player, container);
+            ShowTrainingTimer(player, secs);
+        }
+        public void ShowTrainingTimer(BasePlayer player, int secs)
+        {
+            CuiElementContainer container = UI.CreateElementContainer("Arena_TrainingTitle_TimerPanel", "0 0 0 0.454902", "0.4248047 0.8059896", "0.5380859 0.8619792");
+
             if (secs < 10)
             {
-                UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", $"00:0{secs}", 35, "0.3949579 0.07000065", "0.6050421 0.53");
+                UI.CreateText(ref container, "Arena_TrainingTitle_TimerPanel", "0.9215686 0.09019608 0.09019608 0.9843137", $"00:0{secs}", 32, "0 0", "0.9913793 0.9302347");
             }
             else
             {
-                UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", $"00:{secs}", 35, "0.3949579 0.07000065", "0.6050421 0.53");
+                UI.CreateText(ref container, "Arena_TrainingTitle_TimerPanel", "0.9215686 0.09019608 0.09019608 0.9843137", $"00:{secs}", 32, "0 0", "0.9913793 0.9302347");
             }
 
             CuiHelper.AddUi(player, container);
@@ -1314,6 +1318,7 @@ namespace Oxide.Plugins
         public void DestroyTrainingTitle(BasePlayer player)
         {
             CuiHelper.DestroyUi(player, "Arena_TrainingTitle");
+            CuiHelper.DestroyUi(player, "Arena_TrainingTitle_TimerPanel");
         }
         public void RefreshTrainingTitle(BasePlayer player, int secs)
         {
@@ -1446,18 +1451,18 @@ namespace Oxide.Plugins
 
                 return;
             }
-            if (request.Initiator.Id == player.UserIDString)
-            {
-                SendReply(player, GetMessage("error_accepting_self", this));
+            //if (request.Initiator.Id == player.UserIDString)
+            //{
+            //    SendReply(player, GetMessage("error_accepting_self", this));
 
-                return;
-            }
-            if (IsSameIP(request.Initiator.Name, player.displayName))
-            {
-                SendReply(player, GetMessage("error_accepting_selfip", this));
+            //    return;
+            //}
+            //if (IsSameIP(request.Initiator.Name, player.displayName))
+            //{
+            //    SendReply(player, GetMessage("error_accepting_selfip", this));
 
-                return;
-            }
+            //    return;
+            //}
             if (IsArenaMember(player))
             {
                 SendReply(player, GetMessage("error_you_already_arena_fix", this));
@@ -1662,97 +1667,100 @@ namespace Oxide.Plugins
         {
             if (m_Config.ArenasCoordinates.Any((x) => x.Key == request.Arena))
             {
-                ShowLoadingScreen(FindPlayer(request.Initiator.Id), request.Arena);
-                ShowLoadingScreen(FindPlayer(request.Responser.Id), request.Arena);
+                SendReply(FindPlayer(request.Initiator.Id), GetMessage("arena_ready_to_teleport", this));
+                SendReply(FindPlayer(request.Responser.Id), GetMessage("arena_ready_to_teleport", this));
 
-                FindPlayer(request.Initiator.Id).StartSleeping();
-                FindPlayer(request.Responser.Id).StartSleeping();
-
-                var arenaInfo = m_Config.ArenasCoordinates.Where((x) => x.Key == request.Arena).First();
-
-                request.Initiator.CurrentTeam = Team.Red;
-                request.Responser.CurrentTeam = Team.Blue;
-
-                Arena arena = new Arena(GenerateArenaId(), new ArenaPoints(arenaInfo.Value.ToVector3()), request.Initiator, request.Responser, timer, request.Bet);
-                arena.Boot(GetSpawnPoints(Team.Blue, request.Arena), GetSpawnPoints(Team.Red, request.Arena));
-
-                arena.InitializeWeapon(request.Weapon, request.Ammo);
-                m_ActiveArenas.Add(arena);
-
-                ClearInventory(FindPlayer(request.Initiator.Id), true);
-                ClearInventory(FindPlayer(request.Responser.Id), true);
-
-                SendReply(FindPlayer(request.Initiator.Id), string.Format(GetMessage("arena_ready_to_teleport", this), m_Config.TimeToTeleportOnArena));
-                SendReply(FindPlayer(request.Responser.Id), string.Format(GetMessage("arena_ready_to_teleport", this), m_Config.TimeToTeleportOnArena));
-
-                timer.Once(m_Config.TimeToTeleportOnArena, () =>
+                timer.Once(2f, () =>
                 {
-                    TeleportHelper.TeleportToPoint(FindPlayer(request.Initiator.Id), arena.Spawns.GetRandom(request.Initiator.CurrentTeam));
-                    TeleportHelper.TeleportToPoint(FindPlayer(request.Responser.Id), arena.Spawns.GetRandom(request.Responser.CurrentTeam));
+                    ShowLoadingScreen(FindPlayer(request.Initiator.Id), request.Arena);
+                    ShowLoadingScreen(FindPlayer(request.Responser.Id), request.Arena);
 
-                    GiveChoisedWeapon(FindPlayer(request.Initiator.Id), request.Weapon, request.Ammo);
-                    GiveChoisedWeapon(FindPlayer(request.Responser.Id), request.Weapon, request.Ammo);
+                    FindPlayer(request.Initiator.Id).StartSleeping();
+                    FindPlayer(request.Responser.Id).StartSleeping();
 
-                    HealPlayer(FindPlayer(request.Initiator.Id));
-                    HealPlayer(FindPlayer(request.Responser.Id));
+                    var arenaInfo = m_Config.ArenasCoordinates.Where((x) => x.Key == request.Arena).First();
 
-                    if (FindPlayer(request.Initiator.Id).IsSleeping())
+                    request.Initiator.CurrentTeam = Team.Red;
+                    request.Responser.CurrentTeam = Team.Blue;
+
+                    Arena arena = new Arena(GenerateArenaId(), new ArenaPoints(arenaInfo.Value.ToVector3()), request.Initiator, request.Responser, timer, request.Bet);
+                    arena.Boot(GetSpawnPoints(Team.Blue, request.Arena), GetSpawnPoints(Team.Red, request.Arena));
+
+                    arena.InitializeWeapon(request.Weapon, request.Ammo);
+                    m_ActiveArenas.Add(arena);
+
+                    ClearInventory(FindPlayer(request.Initiator.Id), true);
+                    ClearInventory(FindPlayer(request.Responser.Id), true);
+
+                    timer.Once(m_Config.TimeToTeleportOnArena, () =>
                     {
-                        FindPlayer(request.Initiator.Id).EndSleeping();
-                    }
-                    if (FindPlayer(request.Responser.Id).IsSleeping())
-                    {
-                        FindPlayer(request.Responser.Id).EndSleeping();
-                    }
+                        TeleportHelper.TeleportToPoint(FindPlayer(request.Initiator.Id), arena.Spawns.GetRandom(request.Initiator.CurrentTeam));
+                        TeleportHelper.TeleportToPoint(FindPlayer(request.Responser.Id), arena.Spawns.GetRandom(request.Responser.CurrentTeam));
 
-                    DestroyLoadingScreen(FindPlayer(request.Initiator.Id));
-                    DestroyLoadingScreen(FindPlayer(request.Responser.Id));
+                        GiveChoisedWeapon(FindPlayer(request.Initiator.Id), request.Weapon, request.Ammo);
+                        GiveChoisedWeapon(FindPlayer(request.Responser.Id), request.Weapon, request.Ammo);
 
-                    CancelDuelRequest(FindPlayer(request.Initiator.Id));
-                    if (m_ActiveArenas.Contains(arena))
-                    {
-                        Arena current = m_ActiveArenas.Where((x) => x.Id == arena.Id).First();
-                        current.StartTraining(m_Config.TrainSeconds, () =>
+                        HealPlayer(FindPlayer(request.Initiator.Id));
+                        HealPlayer(FindPlayer(request.Responser.Id));
+
+                        if (FindPlayer(request.Initiator.Id).IsSleeping())
                         {
-                            SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
-                            SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
-
-                            request.Initiator.CurrentPhase = Phases.Train;
-                            request.Responser.CurrentPhase = Phases.Train;
-                        }, () =>
+                            FindPlayer(request.Initiator.Id).EndSleeping();
+                        }
+                        if (FindPlayer(request.Responser.Id).IsSleeping())
                         {
-                            current.DestroyTimers();
-                            current.RespawnMembers();
+                            FindPlayer(request.Responser.Id).EndSleeping();
+                        }
 
-                            HealPlayer(FindPlayer(current.BluePlayer.Id));
-                            HealPlayer(FindPlayer(current.RedPlayer.Id));
+                        DestroyLoadingScreen(FindPlayer(request.Initiator.Id));
+                        DestroyLoadingScreen(FindPlayer(request.Responser.Id));
 
-                            ClearInventory(FindPlayer(current.BluePlayer.Id), false);
-                            ClearInventory(FindPlayer(current.RedPlayer.Id), false);
-
-                            DestroyTrainingTitle(FindPlayer(current.BluePlayer.Id));
-                            DestroyTrainingTitle(FindPlayer(current.RedPlayer.Id));
-
-                            current.StartBattle(m_Config.MatchSeconds, () =>
+                        CancelDuelRequest(FindPlayer(request.Initiator.Id));
+                        if (m_ActiveArenas.Contains(arena))
+                        {
+                            Arena current = m_ActiveArenas.Where((x) => x.Id == arena.Id).First();
+                            current.StartTraining(m_Config.TrainSeconds, () =>
                             {
-                                GiveChoisedWeapon(FindPlayer(current.BluePlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
-                                GiveChoisedWeapon(FindPlayer(current.RedPlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
+                                SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
+                                SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_training_started", this), ToNormalTimeString(m_Config.TrainSeconds)));
 
-                                SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
-                                SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
-
-                                request.Initiator.CurrentPhase = Phases.Battle;
-                                request.Responser.CurrentPhase = Phases.Battle;
+                                request.Initiator.CurrentPhase = Phases.Train;
+                                request.Responser.CurrentPhase = Phases.Train;
                             }, () =>
                             {
-                                StopArena(current.RedPlayer);
+                                current.DestroyTimers();
+                                current.RespawnMembers();
+
+                                HealPlayer(FindPlayer(current.BluePlayer.Id));
+                                HealPlayer(FindPlayer(current.RedPlayer.Id));
+
+                                ClearInventory(FindPlayer(current.BluePlayer.Id), false);
+                                ClearInventory(FindPlayer(current.RedPlayer.Id), false);
+
+                                DestroyTrainingTitle(FindPlayer(current.BluePlayer.Id));
+                                DestroyTrainingTitle(FindPlayer(current.RedPlayer.Id));
+
+                                current.StartBattle(m_Config.MatchSeconds, () =>
+                                {
+                                    GiveChoisedWeapon(FindPlayer(current.BluePlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
+                                    GiveChoisedWeapon(FindPlayer(current.RedPlayer.Id), current.CurrentWeapon, current.CurrentAmmo);
+
+                                    SendReply(FindPlayer(current.RedPlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
+                                    SendReply(FindPlayer(current.BluePlayer.Id), string.Format(GetMessage("info_duel_match_start", this), ToNormalTimeString(m_Config.MatchSeconds)));
+
+                                    request.Initiator.CurrentPhase = Phases.Battle;
+                                    request.Responser.CurrentPhase = Phases.Battle;
+                                }, () =>
+                                {
+                                    StopArena(current.RedPlayer);
+                                });
+                            }, () =>
+                            {
+                                RefreshTrainingTitle(FindPlayer(current.RedPlayer.Id), current.CurrentTimer.Remaining);
+                                RefreshTrainingTitle(FindPlayer(current.BluePlayer.Id), current.CurrentTimer.Remaining);
                             });
-                        }, () =>
-                        {
-                            RefreshTrainingTitle(FindPlayer(current.RedPlayer.Id), current.CurrentTimer.Remaining);
-                            RefreshTrainingTitle(FindPlayer(current.BluePlayer.Id), current.CurrentTimer.Remaining);
-                        });
-                    }
+                        }
+                    });
                 });
             }
             else
