@@ -34,7 +34,7 @@ namespace __red.RustyDuelCash.Exceptions
 
 namespace Oxide.Plugins
 {
-    [Info("RustyDuelCash (prealpha version)", "__red", "0.22.1687")]
+    [Info("RustyDuelCash (prealpha)", "__red", "0.37.1948")]
     class RustyDuelCash : RustPlugin
     {
         #region Fields
@@ -73,7 +73,10 @@ namespace Oxide.Plugins
                 Reason = reason;
                 From = from;
                 Expire = new TimerExtension();
-                Expire.Instantiate(timer, secs, callback, initmsg);
+                Expire.Instantiate(timer, secs, callback, initmsg, () =>
+                {
+
+                });
             }
             public void Destroy()
             {
@@ -90,8 +93,11 @@ namespace Oxide.Plugins
             Main,
             Wear
         }
-        public class BaseRepository { }
-        public class DuelPlayer : BaseRepository
+        public interface IRepository
+        {
+
+        }
+        public class DuelPlayer : IRepository
         {
             public const string INCORRECT_ID   = "-1";
             public const string INCORRECT_NAME = "Unknown";
@@ -299,7 +305,7 @@ namespace Oxide.Plugins
                 return $"{Id}:{Name}:{Balance}:{Victories}:{Loses}";
             }
         }
-        public class DuelRequest : BaseRepository
+        public class DuelRequest : IRepository
         {
             public DuelPlayer Initiator { get; set; }
             public DuelPlayer Responser { get; set; }
@@ -328,7 +334,7 @@ namespace Oxide.Plugins
                 resp.CurrentPhase = Phases.Wait;
             }
         }
-        public class Arena : BaseRepository
+        public class Arena : IRepository
         {
             public int              Id            { get; set; }
             public string           CurrentArena  { get; set; }
@@ -365,17 +371,17 @@ namespace Oxide.Plugins
                 CurrentWeapon = weapon;
                 CurrentAmmo   = ammo;
             }
-            public void StartTraining(int secs, Action init, Action callback)
+            public void StartTraining(int secs, Action init, Action callback, Action onTick = null)
             {
-                Start(secs, init, callback);
+                Start(secs, init, callback, onTick);
             }
-            public void StartBattle(int secs, Action init, Action final)
+            public void StartBattle(int secs, Action init, Action final, Action onTick = null)
             {
-                Start(secs, init, final);
+                Start(secs, init, final, onTick);
             }
-            private void Start(int secs, Action init, Action callback)
+            private void Start(int secs, Action init, Action callback, Action onTick)
             {
-                CurrentTimer.Instantiate(m_TimerInstance, secs, callback, init);
+                CurrentTimer.Instantiate(m_TimerInstance, secs, callback, init, onTick);
             }
             public void DestroyTimers()
             {
@@ -477,13 +483,14 @@ namespace Oxide.Plugins
                 IsEnabled = false;
             }
 
-            public void Instantiate(PluginTimers @object, int secs, Action callBackAction, Action init)
+            public void Instantiate(PluginTimers @object, int secs, Action callBackAction, Action init, Action onTick)
             {
                 init();
                 Object = @object.Repeat(1, secs, () =>
                 {
                     secs--;
                     Remaining = secs;
+                    if (onTick != null) onTick();
                     if (secs == 0)
                     {
                         IsEnabled = false;
@@ -559,6 +566,12 @@ namespace Oxide.Plugins
             [JsonProperty("Время ожидания перед телепортом на арену (в секундах)")]
             public int TimeToTeleportOnArena { get; set; }
 
+            [JsonProperty("Картинки к аренам на загрузочный экран")]
+            public Dictionary<string, string> ArenasImages { get; set; }
+
+            [JsonProperty("Подсказка на загрузочный экран")]
+            public List<string> Soviets { get; set; }
+
             public static RustyDuelCashConfig Prototype()
             {
                 return new RustyDuelCashConfig()
@@ -575,10 +588,31 @@ namespace Oxide.Plugins
                     {
                         ["Снежные Пики"]    = "(-124.3, 93.7, -144.4)",
                         ["Мясорубка"]       = "(-397.3, 101.1, 418.3)",
-                        ["Буря в Пустыне"]  = "(-327.1, 100.0, 106.9)",
                         ["Антенны"]         = "(-82.5, 100.2, -393.1)",
                     },
-                    RedSpawnCoordinates = new Dictionary<string, string[]>()
+                    ArenasImages           = new Dictionary<string, string>()
+                    {
+                        ["Снежные Пики"]       = "https://i.imgur.com/aynkReq.jpg",
+                        ["Мясорубка"]          = "https://i.imgur.com/AdaLHyP.jpg",
+                        ["Антенны"]            = "https://i.imgur.com/O3pqeK1.jpg",
+                        ["Бункер"]             = "https://i.imgur.com/7w3oK89.jpg",
+                        ["Две Реки"]           = "https://i.imgur.com/fjF7zMA.jpg",
+                        ["Ледники"]            = "https://i.imgur.com/lTwJgQO.jpg",
+                        ["Маяк"]               = "https://i.imgur.com/MCdEdGX.jpg",
+                        ["Мост"]               = "https://i.imgur.com/ucyKxBa.jpg",
+                        ["Огоньки"]            = "https://i.imgur.com/JVFyxyb.jpg",
+                        ["Самоцвет"]           = "https://i.imgur.com/0SYq9vq.jpg",
+                        ["Цистерны"]           = "https://i.imgur.com/j4ymlrj.jpg",
+                        ["Болота"]             = "https://i.imgur.com/ZNdkkpI.jpg",
+                        ["Заброшенный карьер"] = "https://i.imgur.com/pfE8ybL.jpg",
+                        ["Грязь"]              = "https://i.imgur.com/usHSpji.jpg",
+                    },
+                    Soviets                = new List<string>()
+                    {
+                        "<color=#109586FF>Аптечки</color> разбросаны по площади всей арены. Если Ваш уровень здоровья упал слишком низко, то они смогут Вам помочь",
+                        "<color=#7B0C81FF>Быстрая реакция</color> и <color=#7B0C81FF>хорошая координация</color> - два основных Ваших преимущества",
+                    },
+                    RedSpawnCoordinates    = new Dictionary<string, string[]>()
                     {
                         ["Снежные Пики"] = new string[]
                         {
@@ -596,14 +630,6 @@ namespace Oxide.Plugins
                             "(-363.8, 100.4, 420.4)",
                             "(-378.6, 101.0, 464.4)"
                         },
-                        ["Буря в Пустыне"] = new string[]
-                        {
-                            "(-421.2, 102.0, 172.8)",
-                            "(-444.9, 101.4, 169.3)",
-                            "(-462.0, 103.0, 167.6)",
-                            "(-451.8, 102.3, 207.2)",
-                            "(-479.5, 101.9, 198.7)"
-                        },
                         ["Антенны"] = new string[]
                         {
                             "(22.5, 100.6, -396.6)",
@@ -613,7 +639,7 @@ namespace Oxide.Plugins
                             "(70.6, 102.5, -359.3)"
                         },
                     },
-                    BlueSpawnCoordinates = new Dictionary<string, string[]>()
+                    BlueSpawnCoordinates   = new Dictionary<string, string[]>()
                     {
                         ["Снежные Пики"] = new string[]
                         {
@@ -624,14 +650,6 @@ namespace Oxide.Plugins
                             "(-148.0, 101.4, -244.1)"
                         },
                         ["Мясорубка"] = new string[]
-                        {
-                            "(-462.6, 100.2, 417.7)",
-                            "(-458.4, 100.2, 426.1)",
-                            "(-460.1, 100.0, 418.9)",
-                            "(-445.3, 100.2, 415.7)",
-                            "(-428.1, 100.6, 421.4)"
-                        },
-                        ["Буря в Пустыне"] = new string[]
                         {
                             "(-462.6, 100.2, 417.7)",
                             "(-458.4, 100.2, 426.1)",
@@ -739,6 +757,7 @@ namespace Oxide.Plugins
         {
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
+                DestroyAllUi(player);
                 SavePlayer(player, true);
             }
 
@@ -808,6 +827,8 @@ namespace Oxide.Plugins
                 ["info_duel_training_started"]         = "Тренировка началась. Время тренировки: '{0}'",
                 ["info_duel_match_start"]              = "Бой начался. Длительнось боя: '{0}'",
                 ["info_duel_stop_force"]               = "Игрок: '{0}' покинул арену раньше установленного времени. Выигрыш Ваш, хоть и выиграли Вы нечестно :(",
+                ["error_you_already_arena_fix"]        = "Вы не можете это использовать находясь на арене. Дождитесь ее завершения или используйте команду /arena.leave",
+
             }, this);
         }
         #endregion
@@ -883,7 +904,7 @@ namespace Oxide.Plugins
         {
             return m_Config.AllowedWeaponList.Any((x) => x.Contains(prefab));
         }
-        private static T GetRepositoryOfType<T>(string playerId) where T : BaseRepository
+        private static T GetRepositoryOfType<T>(string playerId) where T : IRepository
         {
             if(typeof(T) == typeof(DuelPlayer))
             {
@@ -931,7 +952,7 @@ namespace Oxide.Plugins
                 return (T)(object)null;
             }
         }
-        private static List<T> GetAllRepositoriesOfType<T>() where T : BaseRepository
+        private static List<T> GetAllRepositoriesOfType<T>() where T : IRepository
         {
             List<T> list = new List<T>();
 
@@ -1048,7 +1069,7 @@ namespace Oxide.Plugins
                 return null;
             }
         }
-        private void GiveChoisedWeapon(BasePlayer player, int weapon, int ammo, int amount = 120)
+        private void GiveChoisedWeapon(BasePlayer player, int weapon, int ammo, int amount = 180)
         {
             if (weapon == 0 || ammo == 0)
             {
@@ -1070,6 +1091,12 @@ namespace Oxide.Plugins
             }
             else
             {
+                BaseProjectile weaponProj = weaponItem.GetHeldEntity().GetComponent<BaseProjectile>();
+                if(weaponProj != null)
+                {
+                    weaponProj.primaryMagazine.contents = weaponProj.primaryMagazine.capacity;
+                }
+
                 player.GiveItem(weaponItem);
                 player.GiveItem(ammoItem);
             }
@@ -1172,6 +1199,148 @@ namespace Oxide.Plugins
         }
         #endregion
 
+        #region UI
+        public class UI
+        {
+            public static CuiElementContainer CreateElementContainer(string panelName, string color, string aMin, string aMax, bool useCursor = false, string parent = "Overlay")
+            {
+                var NewElement = new CuiElementContainer()
+                {
+                    {
+                        new CuiPanel
+                        {
+                            Image = {Color = color},
+                            RectTransform = {AnchorMin = aMin, AnchorMax = aMax},
+                            CursorEnabled = useCursor
+                        },
+                        new CuiElement().Parent = parent,
+                        panelName
+                    }
+                };
+                return NewElement;
+            }
+
+            public static void LoadImage(ref CuiElementContainer container, string panel, string url, string aMin, string aMax)
+            {
+                container.Add(new CuiElement
+                {
+                    Name = CuiHelper.GetGuid(),
+                    Parent = panel,
+                    FadeOut = 0.15f,
+                    Components =
+                    {
+                        new CuiRawImageComponent { Url = url, FadeIn = 0.3f },
+                        new CuiRectTransformComponent { AnchorMin = aMin, AnchorMax = aMax }
+                    }
+                });
+            }
+
+            public static void CreateInput(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, bool password, int charLimit, TextAnchor align = TextAnchor.MiddleCenter)
+            {
+                container.Add(new CuiElement
+                {
+                    Name = CuiHelper.GetGuid(),
+                    Parent = panel,
+                    Components =
+                    {
+                        new CuiInputFieldComponent { Text = text, FontSize = size, Align = align, Color = color, Command = command, IsPassword = password, CharsLimit = charLimit},
+                        new CuiRectTransformComponent {AnchorMin = aMin, AnchorMax = aMax }
+                    }
+                });
+            }
+
+            public static void CreatePanel(ref CuiElementContainer container, string panel, string color, string aMin, string aMax, bool cursor = false)
+            {
+                container.Add(new CuiPanel
+                {
+                    Image = { Color = color },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
+                    CursorEnabled = cursor
+                },
+                panel);
+            }
+
+            public static void CreateText(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, TextAnchor align = TextAnchor.MiddleCenter)
+            {
+                container.Add(new CuiLabel
+                {
+                    Text = { Color = color, FontSize = size, Align = align, Text = text },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax }
+                },
+                panel);
+            }
+
+            public static void CreateButton(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, TextAnchor align = TextAnchor.MiddleCenter)
+            {
+                container.Add(new CuiButton
+                {
+                    Button = { Color = color, Command = command, FadeIn = 1.0f },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
+                    Text = { Text = text, FontSize = size, Align = align }
+                },
+                panel);
+            }
+
+            public static string Color(string hexColor, float alpha)
+            {
+                if (hexColor.StartsWith("#"))
+                {
+                    hexColor = hexColor.TrimStart('#');
+                }
+
+                int red = int.Parse(hexColor.Substring(0, 2), NumberStyles.AllowHexSpecifier);
+                int green = int.Parse(hexColor.Substring(2, 2), NumberStyles.AllowHexSpecifier);
+                int blue = int.Parse(hexColor.Substring(4, 2), NumberStyles.AllowHexSpecifier);
+                return $"{(double)red / 255} {(double)green / 255} {(double)blue / 255} {alpha}";
+            }
+        }
+
+        public void ShowTrainingTitle(BasePlayer player, int secs)
+        {
+            CuiElementContainer container = UI.CreateElementContainer("Arena_TrainingTitle", "1 1 1 0", "0.25 0.7929688", "0.7148438 0.9231771");
+            UI.CreatePanel(ref container, "Arena_TrainingTitle", "1 1 1 0", "0.25 0.7929688", "0.7148438 0.9231771");
+            UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", "Тренировка: ", 32, "0.1155462 0.5599999", "0.8865545 0.9900001");
+            if (secs < 10)
+            {
+                UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", $"00:0{secs}", 35, "0.3949579 0.07000065", "0.6050421 0.53");
+            }
+            else
+            {
+                UI.CreateText(ref container, "Arena_TrainingTitle", "1 0 0 1", $"00:{secs}", 35, "0.3949579 0.07000065", "0.6050421 0.53");
+            }
+
+            CuiHelper.AddUi(player, container);
+        }
+        public void DestroyTrainingTitle(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, "Arena_TrainingTitle");
+        }
+        public void RefreshTrainingTitle(BasePlayer player, int secs)
+        {
+            DestroyTrainingTitle(player);
+            ShowTrainingTitle(player, secs);
+        }
+        public void ShowLoadingScreen(BasePlayer player, string arena)
+        {
+            CuiElementContainer container = UI.CreateElementContainer("Arena_LoadScreen", "0 0 0 1", "0 -2.980232E-08", "1 1");
+            UI.CreatePanel(ref container, "Arena_LoadScreen", "0 0 0 1", "0 -2.980232E-08", "1 1");
+            UI.LoadImage(ref container, "Arena_LoadScreen", GetArenaImageUrl(arena), "-0.001953125 0.1471355", "1.011719 1");
+            UI.CreateText(ref container, "Arena_LoadScreen", "0.7000011 0.446051 0.07875384 1", "Загрузка", 32, "0.004882813 0.08333334", "0.1445313 0.1354167");
+            UI.CreateText(ref container, "Arena_LoadScreen", "1 1 1 1", m_Config.Soviets.GetRandom(), 18, "0.02832031 0.03776041", "1 0.09114587", TextAnchor.MiddleLeft);
+
+            CuiHelper.AddUi(player, container);
+        }
+        public void DestroyLoadingScreen(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, "Arena_LoadScreen");
+        }
+        public void DestroyAllUi(BasePlayer player)
+        {
+            DestroyTrainingTitle(player);
+            DestroyLoadingScreen(player);
+        }
+        #endregion
+
         #region Commands
         [ChatCommand("rdc.admin.position")]
         private void CmdChatAdminPosition(BasePlayer player, string command, string[] args)
@@ -1210,6 +1379,12 @@ namespace Oxide.Plugins
 
                 return;
             }
+            if(IsArenaMember(player))
+            {
+                SendReply(player, GetMessage("error_you_already_arena_fix", this));
+
+                return;
+            }
             int bet = -1;
             if(!Int32.TryParse(args[0], out bet))
             {
@@ -1230,6 +1405,12 @@ namespace Oxide.Plugins
         private void CmdChatShowList(BasePlayer player, string command, string[] args)
         {
             if (player == null) return;
+            if (IsArenaMember(player))
+            {
+                SendReply(player, GetMessage("error_you_already_arena_fix", this));
+
+                return;
+            }
 
             if (m_Bets.Count <= 0)
             {
@@ -1277,7 +1458,12 @@ namespace Oxide.Plugins
 
                 return;
             }
+            if (IsArenaMember(player))
+            {
+                SendReply(player, GetMessage("error_you_already_arena_fix", this));
 
+                return;
+            }
             try
             {
                 request.OnResponse(GetRepositoryOfType<DuelPlayer>(player.UserIDString));
@@ -1298,7 +1484,12 @@ namespace Oxide.Plugins
         private void CmdChatArenasList(BasePlayer player, string command, string[] args)
         {
             if (player == null) return;
+            if (IsArenaMember(player))
+            {
+                SendReply(player, GetMessage("error_you_already_arena_fix", this));
 
+                return;
+            }
             List<string> availible = new List<string>();
             foreach(string arena in GetAllArenas())
             {
@@ -1316,6 +1507,12 @@ namespace Oxide.Plugins
         private void CmdChatArenasCancel(BasePlayer player, string command, string[] args)
         {
             if (player == null) return;
+            if (IsArenaMember(player))
+            {
+                SendReply(player, GetMessage("error_you_already_arena_fix", this));
+
+                return;
+            }
             if (!IsAlreadyRequested(player)) return;
 
             CancelDuelRequest(player);
@@ -1465,6 +1662,12 @@ namespace Oxide.Plugins
         {
             if (m_Config.ArenasCoordinates.Any((x) => x.Key == request.Arena))
             {
+                ShowLoadingScreen(FindPlayer(request.Initiator.Id), request.Arena);
+                ShowLoadingScreen(FindPlayer(request.Responser.Id), request.Arena);
+
+                FindPlayer(request.Initiator.Id).StartSleeping();
+                FindPlayer(request.Responser.Id).StartSleeping();
+
                 var arenaInfo = m_Config.ArenasCoordinates.Where((x) => x.Key == request.Arena).First();
 
                 request.Initiator.CurrentTeam = Team.Red;
@@ -1493,11 +1696,21 @@ namespace Oxide.Plugins
                     HealPlayer(FindPlayer(request.Initiator.Id));
                     HealPlayer(FindPlayer(request.Responser.Id));
 
-                    CancelDuelRequest(FindPlayer(request.Initiator.Id));
-
-                    if(m_ActiveArenas.Contains(arena))
+                    if (FindPlayer(request.Initiator.Id).IsSleeping())
                     {
+                        FindPlayer(request.Initiator.Id).EndSleeping();
+                    }
+                    if (FindPlayer(request.Responser.Id).IsSleeping())
+                    {
+                        FindPlayer(request.Responser.Id).EndSleeping();
+                    }
 
+                    DestroyLoadingScreen(FindPlayer(request.Initiator.Id));
+                    DestroyLoadingScreen(FindPlayer(request.Responser.Id));
+
+                    CancelDuelRequest(FindPlayer(request.Initiator.Id));
+                    if (m_ActiveArenas.Contains(arena))
+                    {
                         Arena current = m_ActiveArenas.Where((x) => x.Id == arena.Id).First();
                         current.StartTraining(m_Config.TrainSeconds, () =>
                         {
@@ -1506,7 +1719,6 @@ namespace Oxide.Plugins
 
                             request.Initiator.CurrentPhase = Phases.Train;
                             request.Responser.CurrentPhase = Phases.Train;
-
                         }, () =>
                         {
                             current.DestroyTimers();
@@ -1517,6 +1729,9 @@ namespace Oxide.Plugins
 
                             ClearInventory(FindPlayer(current.BluePlayer.Id), false);
                             ClearInventory(FindPlayer(current.RedPlayer.Id), false);
+
+                            DestroyTrainingTitle(FindPlayer(current.BluePlayer.Id));
+                            DestroyTrainingTitle(FindPlayer(current.RedPlayer.Id));
 
                             current.StartBattle(m_Config.MatchSeconds, () =>
                             {
@@ -1532,6 +1747,10 @@ namespace Oxide.Plugins
                             {
                                 StopArena(current.RedPlayer);
                             });
+                        }, () =>
+                        {
+                            RefreshTrainingTitle(FindPlayer(current.RedPlayer.Id), current.CurrentTimer.Remaining);
+                            RefreshTrainingTitle(FindPlayer(current.BluePlayer.Id), current.CurrentTimer.Remaining);
                         });
                     }
                 });
@@ -1611,6 +1830,11 @@ namespace Oxide.Plugins
                     current.Kick(current.BluePlayer);
                 }
 
+                current.DestroyTimers();
+
+                DestroyTrainingTitle(FindPlayer(current.BluePlayer.Id));
+                DestroyTrainingTitle(FindPlayer(current.RedPlayer.Id));
+
                 ClearInventory(FindPlayer(current.RedPlayer.Id), false);
                 ClearInventory(FindPlayer(current.BluePlayer.Id), false);
 
@@ -1636,6 +1860,17 @@ namespace Oxide.Plugins
             else
             {
                 return result;
+            }
+        }
+        private string GetArenaImageUrl(string arena)
+        {
+            if(m_Config.ArenasImages.ContainsKey(arena))
+            {
+                return m_Config.ArenasImages[arena];
+            }
+            else
+            {
+                return "";
             }
         }
         #endregion
